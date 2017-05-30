@@ -25,4 +25,17 @@ func TestGetAllMonitors(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("GetAllMonitors response: %#v", response)
+
+	t.Logf("Count: %d", response.Count)
+	for _, monitor := range response.Monitors {
+		t.Logf("Monitor: %#v", monitor)
+	}
+}
+
+func TestGetMonitor(t *testing.T) {
+	monitor, err := client().GetMonitor("25f88215-8905-40d6-93df-4c34720531ca")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Monitor: %#v", monitor)
 }

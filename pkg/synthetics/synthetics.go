@@ -1,6 +1,7 @@
 package synthetics
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -17,6 +18,8 @@ const (
 	timeFormat = "2006-01-02T15:04:05.999999999-0700"
 )
 
+// HTTPClient is the interface to the HTTP clients that a Client can
+// use.
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -158,4 +161,60 @@ func (c *Client) GetAllMonitors(configs ...func(*GetAllMonitorsArgs)) (*GetAllMo
 	}
 
 	return &getAllMonitorsResponse, nil
+}
+
+// Monitor describes a specific Synthetics monitor.
+type Monitor struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Frequency    uint     `json:"frequency"`
+	URI          string   `json:"uri"`
+	Locations    []string `json:"locations"`
+	Status       string   `json:"status"`
+	SLAThreshold float64  `json:"slaThreshold"`
+	UserID       uint     `json:"userId"`
+	APIVersion   string   `json:"apiVersion"`
+}
+
+// GetMonitor returns a specific Monitor.
+func (c *Client) GetMonitor(id string) (*Monitor, error) {
+	if id == "" {
+		return nil, errors.Errorf("error: invalid id provided: %s", id)
+	}
+
+	request, err := c.getRequest(
+		"GET",
+		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
+		nil,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create GetMonitor request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform GetMonitor request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusNotFound {
+		return nil, errors.New("error: could not find monitor")
+	}
+	if response.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(response.Body)
+
+		return nil, errors.Errorf(
+			"error: invalid response from GetMonitor with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var monitor Monitor
+	if err := json.NewDecoder(response.Body).Decode(&monitor); err != nil {
+		return nil, errors.Wrap(err, "error: could not parse GetMonitor JSON response")
+	}
+
+	return &monitor, nil
 }
