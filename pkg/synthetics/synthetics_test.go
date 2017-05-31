@@ -1,25 +1,73 @@
 package synthetics_test
 
 import (
-	"os"
+	"fmt"
+	"net/http"
 	"testing"
+
+	httpmock "gopkg.in/jarcoal/httpmock.v1"
 
 	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/synthetics"
 )
 
 func client() *synthetics.Client {
 	conf := func(s *synthetics.Client) {
-		s.APIKey = os.Getenv("NEW_RELIC_API_KEY")
+		s.APIKey = "NEW_RELIC_API_KEY"
 	}
 	client, err := synthetics.NewClient(conf)
 	if err != nil {
 		panic(err)
 	}
-
 	return client
 }
 
+func TestGetMonitor(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.DeactivateAndReset()
+
+	id := "asdf-asdf-asdf-asdf"
+
+	monitor := &synthetics.Monitor{
+		ID:           id,
+		Name:         "test-monitor",
+		Type:         "SCRIPT_BROWSER",
+		Frequency:    60,
+		URI:          "https://dollarshaveclub.com",
+		Locations:    []string{"AWS_US_WEST_1"},
+		Status:       "ENABLED",
+		SLAThreshold: 7,
+	}
+
+	httpmock.RegisterResponder("GET", fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
+		func(req *http.Request) (*http.Response, error) {
+			resp, err := httpmock.NewJsonResponse(200, monitor)
+			if err != nil {
+				return httpmock.NewStringResponse(500, ""), nil
+			}
+			return resp, nil
+		},
+	)
+
+	monitorResponse, err := client().GetMonitor(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if monitor.ID != monitorResponse.ID ||
+		monitor.Name != monitorResponse.Name ||
+		monitor.Type != monitorResponse.Type ||
+		monitor.Frequency != monitorResponse.Frequency ||
+		monitor.URI != monitorResponse.URI ||
+		monitor.Locations[0] != monitorResponse.Locations[0] ||
+		monitor.Status != monitorResponse.Status ||
+		monitor.SLAThreshold != monitorResponse.SLAThreshold {
+		t.Fatal("monitor response is incorrect")
+	}
+}
+
 func TestGetAllMonitors(t *testing.T) {
+	t.Skip()
+
 	response, err := client().GetAllMonitors()
 	if err != nil {
 		t.Fatal(err)
@@ -33,6 +81,8 @@ func TestGetAllMonitors(t *testing.T) {
 }
 
 func TestIntegration(t *testing.T) {
+	t.Skip()
+
 	args := &synthetics.CreateMonitorArgs{
 		Name:         "david-test-1",
 		Type:         "SCRIPT_BROWSER",
