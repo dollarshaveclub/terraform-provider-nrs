@@ -1,10 +1,12 @@
 package synthetics
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"time"
 
 	"encoding/json"
@@ -16,6 +18,10 @@ import (
 
 const (
 	timeFormat = "2006-01-02T15:04:05.999999999-0700"
+)
+
+var (
+	monitorURL = regexp.MustCompile(`^https://synthetics.newrelic.com/synthetics/api/v3/monitors/(.+)$`)
 )
 
 // HTTPClient is the interface to the HTTP clients that a Client can
@@ -165,7 +171,7 @@ func (c *Client) GetAllMonitors(configs ...func(*GetAllMonitorsArgs)) (*GetAllMo
 
 // Monitor describes a specific Synthetics monitor.
 type Monitor struct {
-	ID           string   `json:"id"`
+	ID           string   `json:"id,omitempty"`
 	Name         string   `json:"name"`
 	Type         string   `json:"type"`
 	Frequency    uint     `json:"frequency"`
@@ -173,8 +179,8 @@ type Monitor struct {
 	Locations    []string `json:"locations"`
 	Status       string   `json:"status"`
 	SLAThreshold float64  `json:"slaThreshold"`
-	UserID       uint     `json:"userId"`
-	APIVersion   string   `json:"apiVersion"`
+	UserID       uint     `json:"userId,omitempty"`
+	APIVersion   string   `json:"apiVersion,omitempty"`
 }
 
 // GetMonitor returns a specific Monitor.
@@ -217,4 +223,65 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 	}
 
 	return &monitor, nil
+}
+
+// CreateMonitorArgs are the arguments to CreateMonitor.
+type CreateMonitorArgs struct {
+	Name         string                 `json:"name"`
+	Type         string                 `json:"type"`
+	Frequency    uint                   `json:"frequency"`
+	URI          string                 `json:"uri"`
+	Locations    []string               `json:"locations"`
+	Status       string                 `json:"status"`
+	SLAThreshold float64                `json:"slaThreshold"`
+	Options      map[string]interface{} `json:"options"`
+}
+
+// CreateMonitor creates a new Monitor.
+func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
+	reqBody := &bytes.Buffer{}
+	if err := json.NewEncoder(reqBody).Encode(m); err != nil {
+		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", m.Name)
+	}
+
+	request, err := c.getRequest(
+		"POST",
+		"https://synthetics.newrelic.com/synthetics/api/v3/monitors",
+		reqBody,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create CreateMonitor request")
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform CreateMonitor request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusCreated {
+		body, _ := ioutil.ReadAll(response.Body)
+
+		return nil, errors.Errorf(
+			"error: invalid response from CreateMonitor with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	// Extract ID from URL returned in "Location" header
+	location := response.Header.Get("Location")
+	matches := monitorURL.FindAllStringSubmatch(location, 1)
+	if len(matches) == 0 {
+		return nil, errors.Errorf("error: could not find an ID for monitor in location header")
+	}
+	id := matches[0][1]
+
+	monitor, err := c.GetMonitor(id)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error: could not get metadata for monitor: %s", id)
+	}
+
+	return monitor, nil
 }

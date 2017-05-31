@@ -39,3 +39,24 @@ func TestGetMonitor(t *testing.T) {
 	}
 	t.Logf("Monitor: %#v", monitor)
 }
+
+func TestCreateMonitor(t *testing.T) {
+	t.Skip()
+
+	args := &synthetics.CreateMonitorArgs{
+		Name:         "david-test-1",
+		Type:         "SIMPLE",
+		Frequency:    60,
+		URI:          "https://www.dollarshaveclub.com",
+		Locations:    []string{"AWS_US_WEST_1"},
+		Status:       "ENABLED",
+		SLAThreshold: 7,
+	}
+
+	monitor, err := client().CreateMonitor(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Monitor: %#v", monitor)
+}
