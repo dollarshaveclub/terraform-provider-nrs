@@ -30,6 +30,14 @@ const (
 
 var (
 	monitorURL = regexp.MustCompile(`^https://synthetics.newrelic.com/synthetics/api/v3/monitors/(.+)$`)
+
+	// ErrMonitorNotFound is returned when a monitor can't be
+	// found.
+	ErrMonitorNotFound = errors.New("error: monitor not found")
+
+	// ErrMonitorScriptNotFound is returned when a monitor script can't
+	// be found.
+	ErrMonitorScriptNotFound = errors.New("error: monitor script not found")
 )
 
 // HTTPClient is the interface to the HTTP clients that a Client can
@@ -180,16 +188,21 @@ func (c *Client) GetAllMonitors(configs ...func(*GetAllMonitorsArgs)) (*GetAllMo
 
 // Monitor describes a specific Synthetics monitor.
 type Monitor struct {
-	ID           string   `json:"id,omitempty"`
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	Frequency    uint     `json:"frequency"`
-	URI          string   `json:"uri"`
-	Locations    []string `json:"locations"`
-	Status       string   `json:"status"`
-	SLAThreshold float64  `json:"slaThreshold"`
-	UserID       uint     `json:"userId,omitempty"`
-	APIVersion   string   `json:"apiVersion,omitempty"`
+	ID                     string                 `json:"id,omitempty"`
+	Name                   string                 `json:"name"`
+	Type                   string                 `json:"type"`
+	Frequency              uint                   `json:"frequency"`
+	URI                    string                 `json:"uri"`
+	Locations              []string               `json:"locations"`
+	Status                 string                 `json:"status"`
+	SLAThreshold           float64                `json:"slaThreshold"`
+	UserID                 uint                   `json:"userId,omitempty"`
+	APIVersion             string                 `json:"apiVersion,omitempty"`
+	Options                map[string]interface{} `json:"options,omitempty"`
+	ValidationString       *string                `json:"-"`
+	VerifySSL              *bool                  `json:"-"`
+	BypassHEADRequest      *bool                  `json:"-"`
+	TreatRedirectAsFailure *bool                  `json:"-"`
 }
 
 // GetMonitor returns a specific Monitor.
@@ -213,12 +226,12 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode == http.StatusNotFound {
-		return nil, errors.New("error: could not find monitor")
-	}
 	if response.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(response.Body)
+		if response.StatusCode == http.StatusNotFound {
+			return nil, ErrMonitorNotFound
+		}
 
+		body, _ := ioutil.ReadAll(response.Body)
 		return nil, errors.Errorf(
 			"error: invalid response from GetMonitor with code %d. Message: %s",
 			response.StatusCode,
@@ -229,6 +242,21 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 	var monitor Monitor
 	if err := json.NewDecoder(response.Body).Decode(&monitor); err != nil {
 		return nil, errors.Wrap(err, "error: could not parse GetMonitor JSON response")
+	}
+
+	if monitor.Options != nil {
+		if monitor.Options["validationString"] != nil {
+			monitor.ValidationString = strPtr(monitor.Options["validationString"].(string))
+		}
+		if monitor.Options["verifySSL"] != nil {
+			monitor.VerifySSL = boolPtr(monitor.Options["verifySSL"].(bool))
+		}
+		if monitor.Options["bypassHEADRequest"] != nil {
+			monitor.BypassHEADRequest = boolPtr(monitor.Options["bypassHEADRequest"].(bool))
+		}
+		if monitor.Options["treatRedirectAsFailure"] != nil {
+			monitor.TreatRedirectAsFailure = boolPtr(monitor.Options["treatRedirectAsFailure"].(bool))
+		}
 	}
 
 	return &monitor, nil
@@ -512,8 +540,11 @@ func (c *Client) GetMonitorScript(id string) (string, error) {
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(response.Body)
+		if response.StatusCode == http.StatusNotFound {
+			return "", ErrMonitorScriptNotFound
+		}
 
+		body, _ := ioutil.ReadAll(response.Body)
 		return "", errors.Errorf(
 			"error: invalid response from GetMonitorScript with code %d. Message: %s",
 			response.StatusCode,
@@ -534,4 +565,12 @@ func (c *Client) GetMonitorScript(id string) (string, error) {
 	}
 
 	return string(script), nil
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+func strPtr(s string) *string {
+	return &s
 }
