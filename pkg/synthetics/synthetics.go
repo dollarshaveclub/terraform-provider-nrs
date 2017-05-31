@@ -239,10 +239,10 @@ type CreateMonitorArgs struct {
 	Name                   string   `json:"name"`
 	Type                   string   `json:"type"`
 	Frequency              uint     `json:"frequency"`
-	URI                    string   `json:"uri"`
+	URI                    string   `json:"uri,omitempty"`
 	Locations              []string `json:"locations"`
 	Status                 string   `json:"status"`
-	SLAThreshold           float64  `json:"slaThreshold"`
+	SLAThreshold           float64  `json:"slaThreshold,omitempty"`
 	ValidationString       *string  `json:"-"`
 	VerifySSL              *bool    `json:"-"`
 	BypassHEADRequest      *bool    `json:"-"`
@@ -251,7 +251,7 @@ type CreateMonitorArgs struct {
 
 type serializeableMonitorArgs struct {
 	CreateMonitorArgs
-	Options map[string]interface{} `json:"options"`
+	Options map[string]interface{} `json:"options,omitempty"`
 }
 
 // CreateMonitor creates a new Monitor.
@@ -343,7 +343,7 @@ type UpdateMonitorArgs struct {
 
 type serializeableUpdateMonitorArgs struct {
 	UpdateMonitorArgs
-	Options map[string]interface{} `json:"options"`
+	Options map[string]interface{} `json:"options,omitempty"`
 }
 
 // UpdateMonitor creates a new Monitor.
