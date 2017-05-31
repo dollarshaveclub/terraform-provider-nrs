@@ -20,6 +20,12 @@ import (
 
 const (
 	timeFormat = "2006-01-02T15:04:05.999999999-0700"
+
+	// The different type of monitor types.
+	TypeSimple        = "SIMPLE"
+	TypeBrowser       = "BROWSER"
+	TypeScriptAPI     = "SCRIPT_API"
+	TypeScriptBrowser = "SCRIPT_BROWSER"
 )
 
 var (
@@ -230,18 +236,51 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 
 // CreateMonitorArgs are the arguments to CreateMonitor.
 type CreateMonitorArgs struct {
-	Name         string                 `json:"name"`
-	Type         string                 `json:"type"`
-	Frequency    uint                   `json:"frequency"`
-	URI          string                 `json:"uri"`
-	Locations    []string               `json:"locations"`
-	Status       string                 `json:"status"`
-	SLAThreshold float64                `json:"slaThreshold"`
-	Options      map[string]interface{} `json:"options"`
+	Name                   string   `json:"name"`
+	Type                   string   `json:"type"`
+	Frequency              uint     `json:"frequency"`
+	URI                    string   `json:"uri"`
+	Locations              []string `json:"locations"`
+	Status                 string   `json:"status"`
+	SLAThreshold           float64  `json:"slaThreshold"`
+	ValidationString       *string  `json:"-"`
+	VerifySSL              *bool    `json:"-"`
+	BypassHEADRequest      *bool    `json:"-"`
+	TreatRedirectAsFailure *bool    `json:"-"`
+}
+
+type serializeableMonitorArgs struct {
+	CreateMonitorArgs
+	Options map[string]interface{} `json:"options"`
 }
 
 // CreateMonitor creates a new Monitor.
 func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
+	reqArgs := &serializeableMonitorArgs{
+		CreateMonitorArgs: *m,
+	}
+
+	options := make(map[string]interface{})
+	if m.Type == TypeSimple || m.Type == TypeBrowser {
+		if m.VerifySSL != nil {
+			options["verifySSL"] = *m.VerifySSL
+		}
+		if reqArgs.ValidationString != nil {
+			options["validationString"] = *m.ValidationString
+		}
+	}
+	if m.Type == TypeSimple {
+		if m.BypassHEADRequest != nil {
+			options["bypassHEADRequest"] = *m.BypassHEADRequest
+		}
+		if m.TreatRedirectAsFailure != nil {
+			options["treatRedirectAsFailure"] = m.TreatRedirectAsFailure
+		}
+	}
+	if len(options) > 0 {
+		reqArgs.Options = options
+	}
+
 	reqBody := &bytes.Buffer{}
 	if err := json.NewEncoder(reqBody).Encode(m); err != nil {
 		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", m.Name)
@@ -290,19 +329,48 @@ func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
 
 // UpdateMonitorArgs are the arguments to UpdateMonitor.
 type UpdateMonitorArgs struct {
-	Name         string                 `json:"name,omitempty"`
-	Frequency    uint                   `json:"frequency,omitempty"`
-	URI          string                 `json:"uri,omitempty"`
-	Locations    []string               `json:"locations,omitempty"`
-	Status       string                 `json:"status,omitempty"`
-	SLAThreshold float64                `json:"slaThreshold,omitempty"`
-	Options      map[string]interface{} `json:"options,omitempty"`
+	Name                   string   `json:"name,omitempty"`
+	Frequency              uint     `json:"frequency,omitempty"`
+	URI                    string   `json:"uri,omitempty"`
+	Locations              []string `json:"locations,omitempty"`
+	Status                 string   `json:"status,omitempty"`
+	SLAThreshold           float64  `json:"slaThreshold,omitempty"`
+	ValidationString       *string  `json:"-"`
+	VerifySSL              *bool    `json:"-"`
+	BypassHEADRequest      *bool    `json:"-"`
+	TreatRedirectAsFailure *bool    `json:"-"`
+}
+
+type serializeableUpdateMonitorArgs struct {
+	UpdateMonitorArgs
+	Options map[string]interface{} `json:"options"`
 }
 
 // UpdateMonitor creates a new Monitor.
 func (c *Client) UpdateMonitor(id string, args *UpdateMonitorArgs) (*Monitor, error) {
+	reqArgs := &serializeableUpdateMonitorArgs{
+		UpdateMonitorArgs: *args,
+	}
+
+	options := make(map[string]interface{})
+	if args.VerifySSL != nil {
+		options["verifySSL"] = *args.VerifySSL
+	}
+	if args.ValidationString != nil {
+		options["validationString"] = *args.ValidationString
+	}
+	if args.BypassHEADRequest != nil {
+		options["bypassHEADRequest"] = *args.BypassHEADRequest
+	}
+	if args.TreatRedirectAsFailure != nil {
+		options["treatRedirectAsFailure"] = args.TreatRedirectAsFailure
+	}
+	if len(options) > 0 {
+		reqArgs.Options = options
+	}
+
 	reqBody := &bytes.Buffer{}
-	if err := json.NewEncoder(reqBody).Encode(args); err != nil {
+	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
 		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", args.Name)
 	}
 
