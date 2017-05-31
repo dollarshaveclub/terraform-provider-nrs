@@ -35,7 +35,7 @@ func TestGetAllMonitors(t *testing.T) {
 func TestIntegration(t *testing.T) {
 	args := &synthetics.CreateMonitorArgs{
 		Name:         "david-test-1",
-		Type:         "SIMPLE",
+		Type:         "SCRIPT_BROWSER",
 		Frequency:    60,
 		URI:          "https://www.dollarshaveclub.com",
 		Locations:    []string{"AWS_US_WEST_1"},
@@ -58,6 +58,20 @@ func TestIntegration(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if err := client().UpdateMonitorScript(updateMonitor.ID, &synthetics.UpdateMonitorScriptArgs{
+		ScriptText: "for {}",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	script, err := client().GetMonitorScript(updateMonitor.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if script != "for {}" {
+		t.Fatalf("invalid script returned: %s", script)
 	}
 
 	if err := client().DeleteMonitor(updateMonitor.ID); err != nil {

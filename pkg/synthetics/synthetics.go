@@ -13,6 +13,8 @@ import (
 
 	"strconv"
 
+	"encoding/base64"
+
 	"github.com/pkg/errors"
 )
 
@@ -62,6 +64,7 @@ func (c *Client) getRequest(method, url string, body io.Reader) (*http.Request, 
 	}
 
 	request.Header.Add("X-Api-Key", c.APIKey)
+	request.Header.Set("Content-Type", "application/json")
 
 	return request, nil
 }
@@ -252,7 +255,6 @@ func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not create CreateMonitor request")
 	}
-	request.Header.Set("Content-Type", "application/json")
 
 	response, err := c.HTTPClient.Do(request)
 	if err != nil {
@@ -312,7 +314,6 @@ func (c *Client) UpdateMonitor(id string, args *UpdateMonitorArgs) (*Monitor, er
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not create UpdateMonitor request")
 	}
-	request.Header.Set("Content-Type", "application/json")
 
 	response, err := c.HTTPClient.Do(request)
 	if err != nil {
@@ -366,4 +367,103 @@ func (c *Client) DeleteMonitor(id string) error {
 	}
 
 	return nil
+}
+
+// ScriptLocation corresponds to the different locations a script can
+// be executed from.
+type ScriptLocation struct {
+	Name string `json:"name"`
+	HMAC string `json:"hmac"`
+}
+
+// UpdateMonitorScriptArgs are the arguments to UpdateMonitorScript.
+type UpdateMonitorScriptArgs struct {
+	ScriptText      string            `json:"scriptText"`
+	ScriptLocations []*ScriptLocation `json:"scriptLocations,omitempty"`
+}
+
+// UpdateMonitorScript updates the script that backs a monitor.
+func (c *Client) UpdateMonitorScript(id string, args *UpdateMonitorScriptArgs) error {
+	if args.ScriptText == "" {
+		return errors.New("error: ScriptText not provided")
+	}
+
+	reqArgs := map[string]interface{}{
+		"scriptText":      base64.StdEncoding.EncodeToString([]byte(args.ScriptText)),
+		"scriptLocations": args.ScriptLocations,
+	}
+
+	reqBody := &bytes.Buffer{}
+	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
+		return errors.Wrapf(err, "error: could not JSON encode script args for monitor: %s", id)
+	}
+
+	request, err := c.getRequest(
+		"PUT",
+		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s/script", id),
+		reqBody,
+	)
+	if err != nil {
+		return errors.Wrap(err, "error: could not create UpdateMonitorScript request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return errors.Wrap(err, "error: could not perform UpdateMonitorScript request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusNoContent {
+		body, _ := ioutil.ReadAll(response.Body)
+
+		return errors.Errorf(
+			"error: invalid response from UpdateMonitorScript with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	return nil
+}
+
+// GetMonitorScript returns the script that backs a monitor.
+func (c *Client) GetMonitorScript(id string) (string, error) {
+	request, err := c.getRequest(
+		"GET",
+		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s/script", id),
+		nil,
+	)
+	if err != nil {
+		return "", errors.Wrap(err, "error: could not create GetMonitorScript request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return "", errors.Wrap(err, "error: could not perform GetMonitorScript request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(response.Body)
+
+		return "", errors.Errorf(
+			"error: invalid response from GetMonitorScript with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var scriptResponse struct {
+		ScriptText string `json:"scriptText"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&scriptResponse); err != nil {
+		return "", errors.Wrapf(err, "error: could not decode script in response")
+	}
+
+	script, err := base64.StdEncoding.DecodeString(scriptResponse.ScriptText)
+	if err != nil {
+		return "", errors.Wrap(err, "error: could not base64 decode monitor script")
+	}
+
+	return string(script), nil
 }
