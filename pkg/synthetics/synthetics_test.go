@@ -32,17 +32,7 @@ func TestGetAllMonitors(t *testing.T) {
 	}
 }
 
-func TestGetMonitor(t *testing.T) {
-	monitor, err := client().GetMonitor("25f88215-8905-40d6-93df-4c34720531ca")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("Monitor: %#v", monitor)
-}
-
-func TestCreateMonitor(t *testing.T) {
-	t.Skip()
-
+func TestIntegration(t *testing.T) {
 	args := &synthetics.CreateMonitorArgs{
 		Name:         "david-test-1",
 		Type:         "SIMPLE",
@@ -53,10 +43,24 @@ func TestCreateMonitor(t *testing.T) {
 		SLAThreshold: 7,
 	}
 
-	monitor, err := client().CreateMonitor(args)
+	createMonitor, err := client().CreateMonitor(args)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Logf("Monitor: %#v", monitor)
+	getMonitor, err := client().GetMonitor(createMonitor.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updateMonitor, err := client().UpdateMonitor(getMonitor.ID, &synthetics.UpdateMonitorArgs{
+		Frequency: 60,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := client().DeleteMonitor(updateMonitor.ID); err != nil {
+		t.Fatal(err)
+	}
 }

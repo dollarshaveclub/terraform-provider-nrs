@@ -285,3 +285,85 @@ func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
 
 	return monitor, nil
 }
+
+// UpdateMonitorArgs are the arguments to UpdateMonitor.
+type UpdateMonitorArgs struct {
+	Name         string                 `json:"name,omitempty"`
+	Frequency    uint                   `json:"frequency,omitempty"`
+	URI          string                 `json:"uri,omitempty"`
+	Locations    []string               `json:"locations,omitempty"`
+	Status       string                 `json:"status,omitempty"`
+	SLAThreshold float64                `json:"slaThreshold,omitempty"`
+	Options      map[string]interface{} `json:"options,omitempty"`
+}
+
+// UpdateMonitor creates a new Monitor.
+func (c *Client) UpdateMonitor(id string, args *UpdateMonitorArgs) (*Monitor, error) {
+	reqBody := &bytes.Buffer{}
+	if err := json.NewEncoder(reqBody).Encode(args); err != nil {
+		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", args.Name)
+	}
+
+	request, err := c.getRequest(
+		"PATCH",
+		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
+		reqBody,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create UpdateMonitor request")
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform UpdateMonitor request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusNoContent {
+		body, _ := ioutil.ReadAll(response.Body)
+
+		return nil, errors.Errorf(
+			"error: invalid response from UpdateMonitor with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	monitor, err := c.GetMonitor(id)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error: could not get metadata for monitor: %s", id)
+	}
+
+	return monitor, nil
+}
+
+// DeleteMonitor deletes a Monitor.
+func (c *Client) DeleteMonitor(id string) error {
+	request, err := c.getRequest(
+		"DELETE",
+		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
+		nil,
+	)
+	if err != nil {
+		return errors.Wrap(err, "error: could not create DeleteMonitor request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return errors.Wrap(err, "error: could not perform DeleteMonitor request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusNoContent {
+		body, _ := ioutil.ReadAll(response.Body)
+
+		return errors.Errorf(
+			"error: invalid response from DeleteMonitor with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	return nil
+}
