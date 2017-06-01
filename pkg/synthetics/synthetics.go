@@ -39,6 +39,10 @@ var (
 	// ErrMonitorScriptNotFound is returned when a monitor script can't
 	// be found.
 	ErrMonitorScriptNotFound = errors.New("error: monitor script not found")
+
+	// ErrAlertConditionNotFound is returned when an alert
+	// condition can't be found.
+	ErrAlertConditionNotFound = errors.New("error: alert condition not found")
 )
 
 // HTTPClient is the interface to the HTTP clients that a Client can
@@ -567,4 +571,195 @@ func (c *Client) GetMonitorScript(id string) (string, error) {
 	}
 
 	return string(script), nil
+}
+
+// AlertCondition is the response to CreateAlertCondition.
+type AlertCondition struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	MonitorID  string `json:"monitor_id"`
+	RunbookURL string `json:"runbook_url,omitempty"`
+	Enabled    bool   `json:"enabled"`
+}
+
+// CreateAlertConditionArgs are the arguments to CreateAlertCondition.
+type CreateAlertConditionArgs struct {
+	Name       string `json:"name"`
+	MonitorID  string `json:"monitor_id"`
+	RunbookURL string `json:"runbook_url,omitempty"`
+	Enabled    bool   `json:"enabled"`
+}
+
+// CreateAlertCondition creates  a Synthetics  alert condition  for an
+// existing policy.
+func (c *Client) CreateAlertCondition(policyID uint, args *CreateAlertConditionArgs) (*AlertCondition, error) {
+	requestArgs := map[string]interface{}{
+		"synthetics_condition": args,
+	}
+	requestBuf := &bytes.Buffer{}
+	if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
+
+	}
+
+	request, err := c.getRequest(
+		"POST",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/policies/%d.json", policyID),
+		requestBuf,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create CreateAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform CreateAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusCreated {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, errors.Errorf(
+			"error: invalid response from CreateAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var ac map[string]*AlertCondition
+	if err := json.NewDecoder(response.Body).Decode(&ac); err != nil {
+		return nil, errors.Wrap(err, "error: could not JSON decode alert condition")
+	}
+	if condition, ok := ac["synthetics_condition"]; ok {
+		return condition, nil
+	}
+
+	return nil, errors.New("error: condition not returned")
+}
+
+// UpdateAlertConditionArgs are the arguments to UpdateAlertCondition.
+type UpdateAlertConditionArgs struct {
+	Name       string `json:"name"`
+	MonitorID  string `json:"monitor_id"`
+	RunbookURL string `json:"runbook_url,omitempty"`
+	Enabled    bool   `json:"enabled"`
+}
+
+// UpdateAlertCondition updates a Synthetics alert condition. All
+// fields must be specified.
+func (c *Client) UpdateAlertCondition(alertConditionID uint, args *UpdateAlertConditionArgs) (*AlertCondition, error) {
+	requestArgs := map[string]interface{}{
+		"synthetics_condition": args,
+	}
+	requestBuf := &bytes.Buffer{}
+	if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
+
+	}
+
+	request, err := c.getRequest(
+		"PUT",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
+		requestBuf,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create UpdateAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform UpdateAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, errors.Errorf(
+			"error: invalid response from UpdateAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var ac map[string]*AlertCondition
+	if err := json.NewDecoder(response.Body).Decode(&ac); err != nil {
+		return nil, errors.Wrap(err, "error: could not JSON decode alert condition")
+	}
+	if condition, ok := ac["synthetics_condition"]; ok {
+		return condition, nil
+	}
+
+	return nil, errors.New("error: condition not returned")
+}
+
+// DeleteAlertCondition deletes a Synthetics alert condition.
+func (c *Client) DeleteAlertCondition(alertConditionID uint) error {
+	request, err := c.getRequest(
+		"DELETE",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
+		nil,
+	)
+	if err != nil {
+		return errors.Wrap(err, "error: could not create DeleteAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return errors.Wrap(err, "error: could not perform DeleteAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(response.Body)
+		return errors.Errorf(
+			"error: invalid response from DeleteAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	return nil
+}
+
+// GetAlertCondition finds a Synthetics alert condition.
+func (c *Client) GetAlertCondition(policyID, alertConditionID uint) (*AlertCondition, error) {
+	request, err := c.getRequest(
+		"GET",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions.json?policy_id=%d", policyID),
+		nil,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create GetAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform GetAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusNotFound {
+			return nil, ErrAlertConditionNotFound
+		}
+
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, errors.Errorf(
+			"error: invalid response from GetAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var acs map[string][]*AlertCondition
+	if err := json.NewDecoder(response.Body).Decode(&acs); err != nil {
+		return nil, errors.Wrap(err, "error: could not JSON decode alert condition")
+	}
+	if conditions, ok := acs["synthetics_conditions"]; ok {
+		for _, ac := range conditions {
+			if ac.ID == alertConditionID {
+				return ac, nil
+			}
+		}
+	}
+
+	return nil, ErrAlertConditionNotFound
 }
