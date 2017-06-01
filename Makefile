@@ -6,3 +6,6 @@ terraform-provider-nrs:
 test:
 	go test -v github.com/dollarshaveclub/terraform-provider-nrs/pkg/... \
 		github.com/dollarshaveclub/terraform-provider-nrs/cmd/...
+
+dep:
+	godep save github.com/dollarshaveclub/terraform-provider-nrs/pkg/...
