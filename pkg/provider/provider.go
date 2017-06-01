@@ -138,234 +138,11 @@ func NRSMonitorResource() *schema.Resource {
 				ForceNew:    true,
 			},
 		},
-		Create: func(resourceData *schema.ResourceData, meta interface{}) error {
-			client := meta.(*synthetics.Client)
-
-			args := &synthetics.CreateMonitorArgs{
-				Name:         resourceData.Get("name").(string),
-				Type:         resourceData.Get("type").(string),
-				Frequency:    uint(resourceData.Get("frequency").(int)),
-				URI:          resourceData.Get("uri").(string),
-				Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
-				Status:       resourceData.Get("status").(string),
-				SLAThreshold: resourceData.Get("sla_threshold").(float64),
-			}
-
-			if data, ok := resourceData.GetOk("validation_string"); ok {
-				args.ValidationString = util.StrPtr(data.(string))
-			}
-			if data, ok := resourceData.GetOk("verify_ssl"); ok {
-				args.VerifySSL = util.BoolPtr(data.(bool))
-			}
-			if data, ok := resourceData.GetOk("bypass_head_request"); ok {
-				args.BypassHEADRequest = util.BoolPtr(data.(bool))
-			}
-			if data, ok := resourceData.GetOk("treat_redirect_as_failure"); ok {
-				args.TreatRedirectAsFailure = util.BoolPtr(data.(bool))
-			}
-
-			monitor, err := client.CreateMonitor(args)
-			if err != nil {
-				return errors.Wrapf(err, "error: could not create monitor")
-			}
-
-			resourceData.SetId(monitor.ID)
-
-			// Set script if it was provided.
-			if data, ok := resourceData.GetOk("script"); ok {
-				args := &synthetics.UpdateMonitorScriptArgs{
-					ScriptText: data.(string),
-				}
-
-				// Set script locations
-				if data, ok := resourceData.GetOk("script_locations"); ok {
-					scriptLocations := data.([]map[string]interface{})
-					for _, scriptLocation := range scriptLocations {
-						args.ScriptLocations = append(
-							args.ScriptLocations,
-							&synthetics.ScriptLocation{
-								Name: scriptLocation["name"].(string),
-								HMAC: scriptLocation["hmac"].(string),
-							},
-						)
-					}
-				}
-
-				if err := client.UpdateMonitorScript(monitor.ID, args); err != nil {
-					return errors.Wrap(err, "error: could not update monitor script")
-				}
-			}
-
-			return nil
-		},
-		Exists: func(resourceData *schema.ResourceData, meta interface{}) (bool, error) {
-			client := meta.(*synthetics.Client)
-
-			if _, err := client.GetMonitor(resourceData.Id()); err != nil {
-				if err == synthetics.ErrMonitorNotFound {
-					return false, nil
-				}
-				return false, errors.Wrap(err, "error: could not get monitor")
-			}
-
-			return true, nil
-		},
-		Delete: func(resourceData *schema.ResourceData, meta interface{}) error {
-			client := meta.(*synthetics.Client)
-
-			if err := client.DeleteMonitor(resourceData.Id()); err != nil {
-				return errors.Wrap(err, "error: could not delete monitor")
-			}
-
-			return nil
-		},
-		Read: func(resourceData *schema.ResourceData, meta interface{}) error {
-			client := meta.(*synthetics.Client)
-
-			monitor, err := client.GetMonitor(resourceData.Id())
-			if err != nil {
-				return errors.Wrap(err, "error: could not get monitor")
-			}
-
-			script, err := client.GetMonitorScript(resourceData.Id())
-			switch err {
-			case synthetics.ErrMonitorScriptNotFound:
-				if err := resourceData.Set("script", nil); err != nil {
-					return err
-				}
-				if err := resourceData.Set("script_locations", nil); err != nil {
-					return err
-				}
-			case nil:
-				if err := resourceData.Set("script", sha256StateFunc(script)); err != nil {
-					return err
-				}
-			default:
-				return errors.Wrap(err, "error: could not get monitor script")
-			}
-
-			if err := resourceData.Set("name", monitor.Name); err != nil {
-				return err
-			}
-			if err := resourceData.Set("type", monitor.Type); err != nil {
-				return err
-			}
-			if err := resourceData.Set("frequency", monitor.Frequency); err != nil {
-				return err
-			}
-			if err := resourceData.Set("uri", monitor.URI); err != nil {
-				return err
-			}
-			if err := resourceData.Set("locations", monitor.Locations); err != nil {
-				return err
-			}
-			if err := resourceData.Set("status", monitor.Status); err != nil {
-				return err
-			}
-			if err := resourceData.Set("sla_threshold", monitor.SLAThreshold); err != nil {
-				return err
-			}
-
-			if monitor.ValidationString != nil {
-				if err := resourceData.Set("validation_string", *monitor.ValidationString); err != nil {
-					return err
-				}
-			} else {
-				if err := resourceData.Set("validation_string", nil); err != nil {
-					return err
-				}
-			}
-
-			if monitor.VerifySSL != nil {
-				if err := resourceData.Set("verify_ssl", *monitor.VerifySSL); err != nil {
-					return err
-				}
-			} else {
-				if err := resourceData.Set("verify_ssl", nil); err != nil {
-					return err
-				}
-			}
-
-			if monitor.BypassHEADRequest != nil {
-				if err := resourceData.Set("bypass_head_request", *monitor.BypassHEADRequest); err != nil {
-					return err
-				}
-			} else {
-				if err := resourceData.Set("bypass_head_request", nil); err != nil {
-					return err
-				}
-			}
-
-			if monitor.TreatRedirectAsFailure != nil {
-				if err := resourceData.Set("treat_redirect_as_failure", *monitor.TreatRedirectAsFailure); err != nil {
-					return err
-				}
-			} else {
-				if err := resourceData.Set("treat_redirect_as_failure", nil); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		},
-		Update: func(resourceData *schema.ResourceData, meta interface{}) error {
-			client := meta.(*synthetics.Client)
-
-			args := &synthetics.UpdateMonitorArgs{
-				Name:         resourceData.Get("name").(string),
-				Frequency:    uint(resourceData.Get("frequency").(int)),
-				URI:          resourceData.Get("uri").(string),
-				Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
-				Status:       resourceData.Get("status").(string),
-				SLAThreshold: resourceData.Get("sla_threshold").(float64),
-			}
-
-			if resourceData.HasChange("validation_string") {
-				validationString := resourceData.Get("validation_string").(string)
-				if validationString != "" {
-					args.ValidationString = util.StrPtr(validationString)
-				}
-			}
-			if resourceData.HasChange("verify_ssl") {
-				args.VerifySSL = util.BoolPtr(resourceData.Get("verify_ssl").(bool))
-			}
-			if resourceData.HasChange("bypass_head_request") {
-				args.BypassHEADRequest = util.BoolPtr(resourceData.Get("bypass_head_request").(bool))
-			}
-			if resourceData.HasChange("treat_redirect_as_failure") {
-				args.TreatRedirectAsFailure = util.BoolPtr(resourceData.Get("treat_redirect_as_failure").(bool))
-			}
-
-			if _, err := client.UpdateMonitor(resourceData.Id(), args); err != nil {
-				return errors.Wrapf(err, "error: could not update monitor")
-			}
-
-			if resourceData.HasChange("script") {
-				script := resourceData.Get("script").(string)
-				scriptArgs := &synthetics.UpdateMonitorScriptArgs{
-					ScriptText: script,
-				}
-
-				if data, ok := resourceData.GetOk("script_locations"); ok {
-					scriptLocations := data.([]map[string]interface{})
-					for _, scriptLocation := range scriptLocations {
-						scriptArgs.ScriptLocations = append(
-							scriptArgs.ScriptLocations,
-							&synthetics.ScriptLocation{
-								Name: scriptLocation["name"].(string),
-								HMAC: scriptLocation["hmac"].(string),
-							},
-						)
-					}
-				}
-
-				if err := client.UpdateMonitorScript(resourceData.Id(), scriptArgs); err != nil {
-					return errors.Wrapf(err, "error: could not update monitor script")
-				}
-			}
-
-			return nil
-		},
+		Create: NRSMonitorCreate,
+		Exists: NRSMonitorExists,
+		Delete: NRSMonitorDelete,
+		Read:   NRSMonitorRead,
+		Update: NRSMonitorUpdate,
 	}
 }
 
@@ -374,4 +151,245 @@ func sha256StateFunc(i interface{}) string {
 	hash := sha256.New()
 	hash.Write([]byte(s))
 	return string(hash.Sum(nil))
+}
+
+// NRSMonitorCreate creates a new Synthetics monitor using Terraform
+// configuration.
+func NRSMonitorCreate(resourceData *schema.ResourceData, meta interface{}) error {
+	client := meta.(*synthetics.Client)
+
+	args := &synthetics.CreateMonitorArgs{
+		Name:         resourceData.Get("name").(string),
+		Type:         resourceData.Get("type").(string),
+		Frequency:    uint(resourceData.Get("frequency").(int)),
+		URI:          resourceData.Get("uri").(string),
+		Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
+		Status:       resourceData.Get("status").(string),
+		SLAThreshold: resourceData.Get("sla_threshold").(float64),
+	}
+
+	if data, ok := resourceData.GetOk("validation_string"); ok {
+		args.ValidationString = util.StrPtr(data.(string))
+	}
+	if data, ok := resourceData.GetOk("verify_ssl"); ok {
+		args.VerifySSL = util.BoolPtr(data.(bool))
+	}
+	if data, ok := resourceData.GetOk("bypass_head_request"); ok {
+		args.BypassHEADRequest = util.BoolPtr(data.(bool))
+	}
+	if data, ok := resourceData.GetOk("treat_redirect_as_failure"); ok {
+		args.TreatRedirectAsFailure = util.BoolPtr(data.(bool))
+	}
+
+	monitor, err := client.CreateMonitor(args)
+	if err != nil {
+		return errors.Wrapf(err, "error: could not create monitor")
+	}
+
+	resourceData.SetId(monitor.ID)
+
+	// Set script if it was provided.
+	if data, ok := resourceData.GetOk("script"); ok {
+		args := &synthetics.UpdateMonitorScriptArgs{
+			ScriptText: data.(string),
+		}
+
+		// Set script locations
+		if data, ok := resourceData.GetOk("script_locations"); ok {
+			scriptLocations := data.([]map[string]interface{})
+			for _, scriptLocation := range scriptLocations {
+				args.ScriptLocations = append(
+					args.ScriptLocations,
+					&synthetics.ScriptLocation{
+						Name: scriptLocation["name"].(string),
+						HMAC: scriptLocation["hmac"].(string),
+					},
+				)
+			}
+		}
+
+		if err := client.UpdateMonitorScript(monitor.ID, args); err != nil {
+			return errors.Wrap(err, "error: could not update monitor script")
+		}
+	}
+
+	return nil
+}
+
+// NRSMonitorUpdate updates a Synthetics monitor using Terraform
+// configuration.
+func NRSMonitorUpdate(resourceData *schema.ResourceData, meta interface{}) error {
+	client := meta.(*synthetics.Client)
+
+	args := &synthetics.UpdateMonitorArgs{
+		Name:         resourceData.Get("name").(string),
+		Frequency:    uint(resourceData.Get("frequency").(int)),
+		URI:          resourceData.Get("uri").(string),
+		Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
+		Status:       resourceData.Get("status").(string),
+		SLAThreshold: resourceData.Get("sla_threshold").(float64),
+	}
+
+	if resourceData.HasChange("validation_string") {
+		validationString := resourceData.Get("validation_string").(string)
+		if validationString != "" {
+			args.ValidationString = util.StrPtr(validationString)
+		}
+	}
+	if resourceData.HasChange("verify_ssl") {
+		args.VerifySSL = util.BoolPtr(resourceData.Get("verify_ssl").(bool))
+	}
+	if resourceData.HasChange("bypass_head_request") {
+		args.BypassHEADRequest = util.BoolPtr(resourceData.Get("bypass_head_request").(bool))
+	}
+	if resourceData.HasChange("treat_redirect_as_failure") {
+		args.TreatRedirectAsFailure = util.BoolPtr(resourceData.Get("treat_redirect_as_failure").(bool))
+	}
+
+	if _, err := client.UpdateMonitor(resourceData.Id(), args); err != nil {
+		return errors.Wrapf(err, "error: could not update monitor")
+	}
+
+	if resourceData.HasChange("script") {
+		script := resourceData.Get("script").(string)
+		scriptArgs := &synthetics.UpdateMonitorScriptArgs{
+			ScriptText: script,
+		}
+
+		if data, ok := resourceData.GetOk("script_locations"); ok {
+			scriptLocations := data.([]map[string]interface{})
+			for _, scriptLocation := range scriptLocations {
+				scriptArgs.ScriptLocations = append(
+					scriptArgs.ScriptLocations,
+					&synthetics.ScriptLocation{
+						Name: scriptLocation["name"].(string),
+						HMAC: scriptLocation["hmac"].(string),
+					},
+				)
+			}
+		}
+
+		if err := client.UpdateMonitorScript(resourceData.Id(), scriptArgs); err != nil {
+			return errors.Wrapf(err, "error: could not update monitor script")
+		}
+	}
+
+	return nil
+}
+
+// NRSMonitorRead updates Terraform configuration for a Synthetics monitor.
+func NRSMonitorRead(resourceData *schema.ResourceData, meta interface{}) error {
+	client := meta.(*synthetics.Client)
+
+	monitor, err := client.GetMonitor(resourceData.Id())
+	if err != nil {
+		return errors.Wrap(err, "error: could not get monitor")
+	}
+
+	script, err := client.GetMonitorScript(resourceData.Id())
+	switch err {
+	case synthetics.ErrMonitorScriptNotFound:
+		if err := resourceData.Set("script", nil); err != nil {
+			return err
+		}
+		if err := resourceData.Set("script_locations", nil); err != nil {
+			return err
+		}
+	case nil:
+		if err := resourceData.Set("script", sha256StateFunc(script)); err != nil {
+			return err
+		}
+	default:
+		return errors.Wrap(err, "error: could not get monitor script")
+	}
+
+	if err := resourceData.Set("name", monitor.Name); err != nil {
+		return err
+	}
+	if err := resourceData.Set("type", monitor.Type); err != nil {
+		return err
+	}
+	if err := resourceData.Set("frequency", monitor.Frequency); err != nil {
+		return err
+	}
+	if err := resourceData.Set("uri", monitor.URI); err != nil {
+		return err
+	}
+	if err := resourceData.Set("locations", monitor.Locations); err != nil {
+		return err
+	}
+	if err := resourceData.Set("status", monitor.Status); err != nil {
+		return err
+	}
+	if err := resourceData.Set("sla_threshold", monitor.SLAThreshold); err != nil {
+		return err
+	}
+
+	if monitor.ValidationString != nil {
+		if err := resourceData.Set("validation_string", *monitor.ValidationString); err != nil {
+			return err
+		}
+	} else {
+		if err := resourceData.Set("validation_string", nil); err != nil {
+			return err
+		}
+	}
+
+	if monitor.VerifySSL != nil {
+		if err := resourceData.Set("verify_ssl", *monitor.VerifySSL); err != nil {
+			return err
+		}
+	} else {
+		if err := resourceData.Set("verify_ssl", nil); err != nil {
+			return err
+		}
+	}
+
+	if monitor.BypassHEADRequest != nil {
+		if err := resourceData.Set("bypass_head_request", *monitor.BypassHEADRequest); err != nil {
+			return err
+		}
+	} else {
+		if err := resourceData.Set("bypass_head_request", nil); err != nil {
+			return err
+		}
+	}
+
+	if monitor.TreatRedirectAsFailure != nil {
+		if err := resourceData.Set("treat_redirect_as_failure", *monitor.TreatRedirectAsFailure); err != nil {
+			return err
+		}
+	} else {
+		if err := resourceData.Set("treat_redirect_as_failure", nil); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// NRSMonitorDelete deletes a Synthetics monitor using Terraform
+// configuration.
+func NRSMonitorDelete(resourceData *schema.ResourceData, meta interface{}) error {
+	client := meta.(*synthetics.Client)
+
+	if err := client.DeleteMonitor(resourceData.Id()); err != nil {
+		return errors.Wrap(err, "error: could not delete monitor")
+	}
+
+	return nil
+}
+
+// NRSMonitorExists checks whether a Synthetics monitor exists.
+func NRSMonitorExists(resourceData *schema.ResourceData, meta interface{}) (bool, error) {
+	client := meta.(*synthetics.Client)
+
+	if _, err := client.GetMonitor(resourceData.Id()); err != nil {
+		if err == synthetics.ErrMonitorNotFound {
+			return false, nil
+		}
+		return false, errors.Wrap(err, "error: could not get monitor")
+	}
+
+	return true, nil
 }
