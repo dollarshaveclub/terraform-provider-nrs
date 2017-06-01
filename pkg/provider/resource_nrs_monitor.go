@@ -6,6 +6,7 @@ import (
 	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/synthetics"
 	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/util"
 	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/hashicorp/terraform/helper/validation"
 	"github.com/pkg/errors"
 )
 
@@ -44,6 +45,7 @@ func NRSMonitorResource() *schema.Resource {
 				Required:     true,
 				InputDefault: "ENABLED",
 				Description:  "The monitor's status (one of ENABLED, MUTED, DISABLED)",
+				ValidateFunc: validation.StringInSlice([]string{"ENABLED", "MUTED", "DISABLED"}, false),
 			},
 			"sla_threshold": &schema.Schema{
 				Type:        schema.TypeFloat,
@@ -97,10 +99,11 @@ func NRSMonitorResource() *schema.Resource {
 				},
 			},
 			"type": &schema.Schema{
-				Type:        schema.TypeString,
-				Description: "The type of monitor (one of SIMPLE, BROWSER, SCRIPT_API, SCRIPT_BROWSER)",
-				Required:    true,
-				ForceNew:    true,
+				Type:         schema.TypeString,
+				Description:  "The type of monitor (one of SIMPLE, BROWSER, SCRIPT_API, SCRIPT_BROWSER)",
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: validation.StringInSlice([]string{"SIMPLE", "BROWSER", "SCRIPT_API", "SCRIPT_BROWSER"}, false),
 			},
 		},
 		Create: NRSMonitorCreate,

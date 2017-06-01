@@ -17,6 +17,7 @@ func NRSAlertConditionResource() *schema.Resource {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "The alert condition's ID with New Relic",
+				ForceNew:    true,
 			},
 			"name": &schema.Schema{
 				Type:        schema.TypeString,

@@ -74,6 +74,24 @@
 			"notests": true
 		},
 		{
+			"importpath": "github.com/hashicorp/terraform/helper/structure",
+			"repository": "https://github.com/hashicorp/terraform",
+			"vcs": "git",
+			"revision": "29444aee87702cbbbfd9d1afa00bb3c50db66b55",
+			"branch": "master",
+			"path": "helper/structure",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/hashicorp/terraform/helper/validation",
+			"repository": "https://github.com/hashicorp/terraform",
+			"vcs": "git",
+			"revision": "29444aee87702cbbbfd9d1afa00bb3c50db66b55",
+			"branch": "master",
+			"path": "/helper/validation",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/hashicorp/terraform/plugin",
 			"repository": "https://github.com/hashicorp/terraform",
 			"vcs": "git",
