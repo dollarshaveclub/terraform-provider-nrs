@@ -11,12 +11,12 @@ import (
 func Provider() terraform.ResourceProvider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
-			"new_relic_api_key": &schema.Schema{
+			"newrelic_api_key": &schema.Schema{
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "An admin API key for New Relic",
 				Sensitive:   true,
-				DefaultFunc: schema.EnvDefaultFunc("NEW_RELIC_API_KEY", ""),
+				DefaultFunc: schema.EnvDefaultFunc("NEWRELIC_API_KEY", "key"),
 			},
 		},
 		ConfigureFunc: getClient,
@@ -28,7 +28,7 @@ func Provider() terraform.ResourceProvider {
 }
 
 func getClient(rd *schema.ResourceData) (interface{}, error) {
-	apiKey, ok := rd.Get("new_relic_api_key").(string)
+	apiKey, ok := rd.Get("newrelic_api_key").(string)
 	if !ok {
 		return nil, errors.New("invalid type for new relic api key")
 	}

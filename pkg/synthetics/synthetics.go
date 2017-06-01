@@ -316,7 +316,7 @@ func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
 	}
 
 	reqBody := &bytes.Buffer{}
-	if err := json.NewEncoder(reqBody).Encode(m); err != nil {
+	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
 		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", m.Name)
 	}
 

@@ -49,6 +49,7 @@ func NRSMonitorResource() *schema.Resource {
 				Type:        schema.TypeFloat,
 				Description: "The monitor's SLA threshold",
 				Optional:    true,
+				Computed:    true,
 			},
 			"validation_string": &schema.Schema{
 				Type:        schema.TypeString,
@@ -151,6 +152,7 @@ func NRSMonitorCreate(resourceData *schema.ResourceData, meta interface{}) error
 	}
 
 	resourceData.SetId(monitor.ID)
+	resourceData.Set("sla_threshold", monitor.SLAThreshold)
 
 	// Set script if it was provided.
 	if data, ok := resourceData.GetOk("script"); ok {
@@ -210,8 +212,12 @@ func NRSMonitorUpdate(resourceData *schema.ResourceData, meta interface{}) error
 		args.TreatRedirectAsFailure = util.BoolPtr(resourceData.Get("treat_redirect_as_failure").(bool))
 	}
 
-	if _, err := client.UpdateMonitor(resourceData.Id(), args); err != nil {
+	monitor, err := client.UpdateMonitor(resourceData.Id(), args)
+	if err != nil {
 		return errors.Wrapf(err, "error: could not update monitor")
+	}
+	if err := resourceData.Set("sla_threshold", monitor.SLAThreshold); err != nil {
+		return err
 	}
 
 	if resourceData.HasChange("script") {
@@ -250,21 +256,23 @@ func NRSMonitorRead(resourceData *schema.ResourceData, meta interface{}) error {
 		return errors.Wrap(err, "error: could not get monitor")
 	}
 
-	script, err := client.GetMonitorScript(resourceData.Id())
-	switch err {
-	case synthetics.ErrMonitorScriptNotFound:
-		if err := resourceData.Set("script", nil); err != nil {
-			return err
+	if monitor.Type == synthetics.TypeScriptAPI || monitor.Type == synthetics.TypeScriptBrowser {
+		script, err := client.GetMonitorScript(resourceData.Id())
+		switch err {
+		case synthetics.ErrMonitorScriptNotFound:
+			if err := resourceData.Set("script", nil); err != nil {
+				return err
+			}
+			if err := resourceData.Set("script_locations", nil); err != nil {
+				return err
+			}
+		case nil:
+			if err := resourceData.Set("script", sha256StateFunc(script)); err != nil {
+				return err
+			}
+		default:
+			return errors.Wrap(err, "error: could not get monitor script")
 		}
-		if err := resourceData.Set("script_locations", nil); err != nil {
-			return err
-		}
-	case nil:
-		if err := resourceData.Set("script", sha256StateFunc(script)); err != nil {
-			return err
-		}
-	default:
-		return errors.Wrap(err, "error: could not get monitor script")
 	}
 
 	if err := resourceData.Set("name", monitor.Name); err != nil {
