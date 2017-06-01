@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 
 	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/synthetics"
+	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/util"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/pkg/errors"
@@ -59,10 +60,9 @@ func NRSMonitorResource() *schema.Resource {
 				Required: true,
 			},
 			"frequency": &schema.Schema{
-				Type:         schema.TypeInt,
-				Required:     true,
-				InputDefault: "60",
-				Description:  "The monitor's checking frequency in minutes (one of 1, 5, 10, 15, 30, 60, 360, 720, or 1440",
+				Type:        schema.TypeInt,
+				Required:    true,
+				Description: "The monitor's checking frequency in minutes (one of 1, 5, 10, 15, 30, 60, 360, 720, or 1440)",
 			},
 			"uri": &schema.Schema{
 				Type:        schema.TypeString,
@@ -73,7 +73,7 @@ func NRSMonitorResource() *schema.Resource {
 				Type:        schema.TypeList,
 				Required:    true,
 				Description: "The locations to check from",
-				Elem:        schema.TypeString,
+				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"status": &schema.Schema{
 				Type:         schema.TypeString,
@@ -110,12 +110,7 @@ func NRSMonitorResource() *schema.Resource {
 				Type:        schema.TypeString,
 				Description: "The script to execute",
 				Optional:    true,
-				StateFunc: func(i interface{}) string {
-					s := i.(string)
-					hash := sha256.New()
-					hash.Write([]byte(s))
-					return string(hash.Sum(nil))
-				},
+				StateFunc:   sha256StateFunc,
 			},
 			"script_locations": &schema.Schema{
 				Type:        schema.TypeList,
@@ -149,24 +144,24 @@ func NRSMonitorResource() *schema.Resource {
 			args := &synthetics.CreateMonitorArgs{
 				Name:         resourceData.Get("name").(string),
 				Type:         resourceData.Get("type").(string),
-				Frequency:    resourceData.Get("frequency").(uint),
+				Frequency:    uint(resourceData.Get("frequency").(int)),
 				URI:          resourceData.Get("uri").(string),
-				Locations:    resourceData.Get("locations").([]string),
+				Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
 				Status:       resourceData.Get("status").(string),
 				SLAThreshold: resourceData.Get("sla_threshold").(float64),
 			}
 
 			if data, ok := resourceData.GetOk("validation_string"); ok {
-				args.ValidationString = strPtr(data.(string))
+				args.ValidationString = util.StrPtr(data.(string))
 			}
 			if data, ok := resourceData.GetOk("verify_ssl"); ok {
-				args.VerifySSL = boolPtr(data.(bool))
+				args.VerifySSL = util.BoolPtr(data.(bool))
 			}
 			if data, ok := resourceData.GetOk("bypass_head_request"); ok {
-				args.BypassHEADRequest = boolPtr(data.(bool))
+				args.BypassHEADRequest = util.BoolPtr(data.(bool))
 			}
 			if data, ok := resourceData.GetOk("treat_redirect_as_failure"); ok {
-				args.TreatRedirectAsFailure = boolPtr(data.(bool))
+				args.TreatRedirectAsFailure = util.BoolPtr(data.(bool))
 			}
 
 			monitor, err := client.CreateMonitor(args)
@@ -242,7 +237,7 @@ func NRSMonitorResource() *schema.Resource {
 					return err
 				}
 			case nil:
-				if err := resourceData.Set("script", script); err != nil {
+				if err := resourceData.Set("script", sha256StateFunc(script)); err != nil {
 					return err
 				}
 			default:
@@ -318,9 +313,9 @@ func NRSMonitorResource() *schema.Resource {
 
 			args := &synthetics.UpdateMonitorArgs{
 				Name:         resourceData.Get("name").(string),
-				Frequency:    resourceData.Get("frequency").(uint),
+				Frequency:    uint(resourceData.Get("frequency").(int)),
 				URI:          resourceData.Get("uri").(string),
-				Locations:    resourceData.Get("locations").([]string),
+				Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
 				Status:       resourceData.Get("status").(string),
 				SLAThreshold: resourceData.Get("sla_threshold").(float64),
 			}
@@ -328,30 +323,55 @@ func NRSMonitorResource() *schema.Resource {
 			if resourceData.HasChange("validation_string") {
 				validationString := resourceData.Get("validation_string").(string)
 				if validationString != "" {
-					args.ValidationString = strPtr(validationString)
+					args.ValidationString = util.StrPtr(validationString)
 				}
 			}
 			if resourceData.HasChange("verify_ssl") {
-				args.VerifySSL = boolPtr(resourceData.Get("verify_ssl").(bool))
+				args.VerifySSL = util.BoolPtr(resourceData.Get("verify_ssl").(bool))
 			}
 			if resourceData.HasChange("bypass_head_request") {
-				args.BypassHEADRequest = boolPtr(resourceData.Get("bypass_head_request").(bool))
+				args.BypassHEADRequest = util.BoolPtr(resourceData.Get("bypass_head_request").(bool))
 			}
 			if resourceData.HasChange("treat_redirect_as_failure") {
-				args.TreatRedirectAsFailure = boolPtr(resourceData.Get("treat_redirect_as_failure").(bool))
+				args.TreatRedirectAsFailure = util.BoolPtr(resourceData.Get("treat_redirect_as_failure").(bool))
 			}
 
-			client.UpdateMonitor(resourceData.Id(), args)
+			if _, err := client.UpdateMonitor(resourceData.Id(), args); err != nil {
+				return errors.Wrapf(err, "error: could not update monitor")
+			}
+
+			if resourceData.HasChange("script") {
+				script := resourceData.Get("script").(string)
+				scriptArgs := &synthetics.UpdateMonitorScriptArgs{
+					ScriptText: script,
+				}
+
+				if data, ok := resourceData.GetOk("script_locations"); ok {
+					scriptLocations := data.([]map[string]interface{})
+					for _, scriptLocation := range scriptLocations {
+						scriptArgs.ScriptLocations = append(
+							scriptArgs.ScriptLocations,
+							&synthetics.ScriptLocation{
+								Name: scriptLocation["name"].(string),
+								HMAC: scriptLocation["hmac"].(string),
+							},
+						)
+					}
+				}
+
+				if err := client.UpdateMonitorScript(resourceData.Id(), scriptArgs); err != nil {
+					return errors.Wrapf(err, "error: could not update monitor script")
+				}
+			}
 
 			return nil
 		},
 	}
 }
 
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-func strPtr(s string) *string {
-	return &s
+func sha256StateFunc(i interface{}) string {
+	s := i.(string)
+	hash := sha256.New()
+	hash.Write([]byte(s))
+	return string(hash.Sum(nil))
 }

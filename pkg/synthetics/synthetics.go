@@ -15,6 +15,7 @@ import (
 
 	"encoding/base64"
 
+	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/util"
 	"github.com/pkg/errors"
 )
 
@@ -79,6 +80,7 @@ func (c *Client) getRequest(method, url string, body io.Reader) (*http.Request, 
 
 	request.Header.Add("X-Api-Key", c.APIKey)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
 
 	return request, nil
 }
@@ -246,16 +248,16 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 
 	if monitor.Options != nil {
 		if monitor.Options["validationString"] != nil {
-			monitor.ValidationString = strPtr(monitor.Options["validationString"].(string))
+			monitor.ValidationString = util.StrPtr(monitor.Options["validationString"].(string))
 		}
 		if monitor.Options["verifySSL"] != nil {
-			monitor.VerifySSL = boolPtr(monitor.Options["verifySSL"].(bool))
+			monitor.VerifySSL = util.BoolPtr(monitor.Options["verifySSL"].(bool))
 		}
 		if monitor.Options["bypassHEADRequest"] != nil {
-			monitor.BypassHEADRequest = boolPtr(monitor.Options["bypassHEADRequest"].(bool))
+			monitor.BypassHEADRequest = util.BoolPtr(monitor.Options["bypassHEADRequest"].(bool))
 		}
 		if monitor.Options["treatRedirectAsFailure"] != nil {
-			monitor.TreatRedirectAsFailure = boolPtr(monitor.Options["treatRedirectAsFailure"].(bool))
+			monitor.TreatRedirectAsFailure = util.BoolPtr(monitor.Options["treatRedirectAsFailure"].(bool))
 		}
 	}
 
@@ -565,12 +567,4 @@ func (c *Client) GetMonitorScript(id string) (string, error) {
 	}
 
 	return string(script), nil
-}
-
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-func strPtr(s string) *string {
-	return &s
 }
