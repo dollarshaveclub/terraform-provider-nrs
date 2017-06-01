@@ -15,15 +15,34 @@ import (
 
 	"encoding/base64"
 
+	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/util"
 	"github.com/pkg/errors"
 )
 
 const (
 	timeFormat = "2006-01-02T15:04:05.999999999-0700"
+
+	// The different type of monitor types.
+	TypeSimple        = "SIMPLE"
+	TypeBrowser       = "BROWSER"
+	TypeScriptAPI     = "SCRIPT_API"
+	TypeScriptBrowser = "SCRIPT_BROWSER"
 )
 
 var (
 	monitorURL = regexp.MustCompile(`^https://synthetics.newrelic.com/synthetics/api/v3/monitors/(.+)$`)
+
+	// ErrMonitorNotFound is returned when a monitor can't be
+	// found.
+	ErrMonitorNotFound = errors.New("error: monitor not found")
+
+	// ErrMonitorScriptNotFound is returned when a monitor script can't
+	// be found.
+	ErrMonitorScriptNotFound = errors.New("error: monitor script not found")
+
+	// ErrAlertConditionNotFound is returned when an alert
+	// condition can't be found.
+	ErrAlertConditionNotFound = errors.New("error: alert condition not found")
 )
 
 // HTTPClient is the interface to the HTTP clients that a Client can
@@ -65,6 +84,7 @@ func (c *Client) getRequest(method, url string, body io.Reader) (*http.Request, 
 
 	request.Header.Add("X-Api-Key", c.APIKey)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
 
 	return request, nil
 }
@@ -174,16 +194,21 @@ func (c *Client) GetAllMonitors(configs ...func(*GetAllMonitorsArgs)) (*GetAllMo
 
 // Monitor describes a specific Synthetics monitor.
 type Monitor struct {
-	ID           string   `json:"id,omitempty"`
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	Frequency    uint     `json:"frequency"`
-	URI          string   `json:"uri"`
-	Locations    []string `json:"locations"`
-	Status       string   `json:"status"`
-	SLAThreshold float64  `json:"slaThreshold"`
-	UserID       uint     `json:"userId,omitempty"`
-	APIVersion   string   `json:"apiVersion,omitempty"`
+	ID                     string                 `json:"id,omitempty"`
+	Name                   string                 `json:"name"`
+	Type                   string                 `json:"type"`
+	Frequency              uint                   `json:"frequency"`
+	URI                    string                 `json:"uri"`
+	Locations              []string               `json:"locations"`
+	Status                 string                 `json:"status"`
+	SLAThreshold           float64                `json:"slaThreshold"`
+	UserID                 uint                   `json:"userId,omitempty"`
+	APIVersion             string                 `json:"apiVersion,omitempty"`
+	Options                map[string]interface{} `json:"options,omitempty"`
+	ValidationString       *string                `json:"-"`
+	VerifySSL              *bool                  `json:"-"`
+	BypassHEADRequest      *bool                  `json:"-"`
+	TreatRedirectAsFailure *bool                  `json:"-"`
 }
 
 // GetMonitor returns a specific Monitor.
@@ -207,12 +232,12 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode == http.StatusNotFound {
-		return nil, errors.New("error: could not find monitor")
-	}
 	if response.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(response.Body)
+		if response.StatusCode == http.StatusNotFound {
+			return nil, ErrMonitorNotFound
+		}
 
+		body, _ := ioutil.ReadAll(response.Body)
 		return nil, errors.Errorf(
 			"error: invalid response from GetMonitor with code %d. Message: %s",
 			response.StatusCode,
@@ -225,25 +250,73 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 		return nil, errors.Wrap(err, "error: could not parse GetMonitor JSON response")
 	}
 
+	if monitor.Options != nil {
+		if monitor.Options["validationString"] != nil {
+			monitor.ValidationString = util.StrPtr(monitor.Options["validationString"].(string))
+		}
+		if monitor.Options["verifySSL"] != nil {
+			monitor.VerifySSL = util.BoolPtr(monitor.Options["verifySSL"].(bool))
+		}
+		if monitor.Options["bypassHEADRequest"] != nil {
+			monitor.BypassHEADRequest = util.BoolPtr(monitor.Options["bypassHEADRequest"].(bool))
+		}
+		if monitor.Options["treatRedirectAsFailure"] != nil {
+			monitor.TreatRedirectAsFailure = util.BoolPtr(monitor.Options["treatRedirectAsFailure"].(bool))
+		}
+	}
+
 	return &monitor, nil
 }
 
 // CreateMonitorArgs are the arguments to CreateMonitor.
 type CreateMonitorArgs struct {
-	Name         string                 `json:"name"`
-	Type         string                 `json:"type"`
-	Frequency    uint                   `json:"frequency"`
-	URI          string                 `json:"uri"`
-	Locations    []string               `json:"locations"`
-	Status       string                 `json:"status"`
-	SLAThreshold float64                `json:"slaThreshold"`
-	Options      map[string]interface{} `json:"options"`
+	Name                   string   `json:"name"`
+	Type                   string   `json:"type"`
+	Frequency              uint     `json:"frequency"`
+	URI                    string   `json:"uri,omitempty"`
+	Locations              []string `json:"locations"`
+	Status                 string   `json:"status"`
+	SLAThreshold           float64  `json:"slaThreshold,omitempty"`
+	ValidationString       *string  `json:"-"`
+	VerifySSL              *bool    `json:"-"`
+	BypassHEADRequest      *bool    `json:"-"`
+	TreatRedirectAsFailure *bool    `json:"-"`
+}
+
+type serializeableMonitorArgs struct {
+	CreateMonitorArgs
+	Options map[string]interface{} `json:"options,omitempty"`
 }
 
 // CreateMonitor creates a new Monitor.
 func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
+	reqArgs := &serializeableMonitorArgs{
+		CreateMonitorArgs: *m,
+	}
+
+	options := make(map[string]interface{})
+	if m.Type == TypeSimple || m.Type == TypeBrowser {
+		if m.VerifySSL != nil {
+			options["verifySSL"] = *m.VerifySSL
+		}
+		if reqArgs.ValidationString != nil {
+			options["validationString"] = *m.ValidationString
+		}
+	}
+	if m.Type == TypeSimple {
+		if m.BypassHEADRequest != nil {
+			options["bypassHEADRequest"] = *m.BypassHEADRequest
+		}
+		if m.TreatRedirectAsFailure != nil {
+			options["treatRedirectAsFailure"] = m.TreatRedirectAsFailure
+		}
+	}
+	if len(options) > 0 {
+		reqArgs.Options = options
+	}
+
 	reqBody := &bytes.Buffer{}
-	if err := json.NewEncoder(reqBody).Encode(m); err != nil {
+	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
 		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", m.Name)
 	}
 
@@ -290,19 +363,48 @@ func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
 
 // UpdateMonitorArgs are the arguments to UpdateMonitor.
 type UpdateMonitorArgs struct {
-	Name         string                 `json:"name,omitempty"`
-	Frequency    uint                   `json:"frequency,omitempty"`
-	URI          string                 `json:"uri,omitempty"`
-	Locations    []string               `json:"locations,omitempty"`
-	Status       string                 `json:"status,omitempty"`
-	SLAThreshold float64                `json:"slaThreshold,omitempty"`
-	Options      map[string]interface{} `json:"options,omitempty"`
+	Name                   string   `json:"name,omitempty"`
+	Frequency              uint     `json:"frequency,omitempty"`
+	URI                    string   `json:"uri,omitempty"`
+	Locations              []string `json:"locations,omitempty"`
+	Status                 string   `json:"status,omitempty"`
+	SLAThreshold           float64  `json:"slaThreshold,omitempty"`
+	ValidationString       *string  `json:"-"`
+	VerifySSL              *bool    `json:"-"`
+	BypassHEADRequest      *bool    `json:"-"`
+	TreatRedirectAsFailure *bool    `json:"-"`
+}
+
+type serializeableUpdateMonitorArgs struct {
+	UpdateMonitorArgs
+	Options map[string]interface{} `json:"options,omitempty"`
 }
 
 // UpdateMonitor creates a new Monitor.
 func (c *Client) UpdateMonitor(id string, args *UpdateMonitorArgs) (*Monitor, error) {
+	reqArgs := &serializeableUpdateMonitorArgs{
+		UpdateMonitorArgs: *args,
+	}
+
+	options := make(map[string]interface{})
+	if args.VerifySSL != nil {
+		options["verifySSL"] = *args.VerifySSL
+	}
+	if args.ValidationString != nil {
+		options["validationString"] = *args.ValidationString
+	}
+	if args.BypassHEADRequest != nil {
+		options["bypassHEADRequest"] = *args.BypassHEADRequest
+	}
+	if args.TreatRedirectAsFailure != nil {
+		options["treatRedirectAsFailure"] = args.TreatRedirectAsFailure
+	}
+	if len(options) > 0 {
+		reqArgs.Options = options
+	}
+
 	reqBody := &bytes.Buffer{}
-	if err := json.NewEncoder(reqBody).Encode(args); err != nil {
+	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
 		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", args.Name)
 	}
 
@@ -444,8 +546,11 @@ func (c *Client) GetMonitorScript(id string) (string, error) {
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(response.Body)
+		if response.StatusCode == http.StatusNotFound {
+			return "", ErrMonitorScriptNotFound
+		}
 
+		body, _ := ioutil.ReadAll(response.Body)
 		return "", errors.Errorf(
 			"error: invalid response from GetMonitorScript with code %d. Message: %s",
 			response.StatusCode,
@@ -466,4 +571,195 @@ func (c *Client) GetMonitorScript(id string) (string, error) {
 	}
 
 	return string(script), nil
+}
+
+// AlertCondition is the response to CreateAlertCondition.
+type AlertCondition struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	MonitorID  string `json:"monitor_id"`
+	RunbookURL string `json:"runbook_url,omitempty"`
+	Enabled    bool   `json:"enabled"`
+}
+
+// CreateAlertConditionArgs are the arguments to CreateAlertCondition.
+type CreateAlertConditionArgs struct {
+	Name       string `json:"name"`
+	MonitorID  string `json:"monitor_id"`
+	RunbookURL string `json:"runbook_url,omitempty"`
+	Enabled    bool   `json:"enabled"`
+}
+
+// CreateAlertCondition creates  a Synthetics  alert condition  for an
+// existing policy.
+func (c *Client) CreateAlertCondition(policyID uint, args *CreateAlertConditionArgs) (*AlertCondition, error) {
+	requestArgs := map[string]interface{}{
+		"synthetics_condition": args,
+	}
+	requestBuf := &bytes.Buffer{}
+	if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
+
+	}
+
+	request, err := c.getRequest(
+		"POST",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/policies/%d.json", policyID),
+		requestBuf,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create CreateAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform CreateAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusCreated {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, errors.Errorf(
+			"error: invalid response from CreateAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var ac map[string]*AlertCondition
+	if err := json.NewDecoder(response.Body).Decode(&ac); err != nil {
+		return nil, errors.Wrap(err, "error: could not JSON decode alert condition")
+	}
+	if condition, ok := ac["synthetics_condition"]; ok {
+		return condition, nil
+	}
+
+	return nil, errors.New("error: condition not returned")
+}
+
+// UpdateAlertConditionArgs are the arguments to UpdateAlertCondition.
+type UpdateAlertConditionArgs struct {
+	Name       string `json:"name"`
+	MonitorID  string `json:"monitor_id"`
+	RunbookURL string `json:"runbook_url,omitempty"`
+	Enabled    bool   `json:"enabled"`
+}
+
+// UpdateAlertCondition updates a Synthetics alert condition. All
+// fields must be specified.
+func (c *Client) UpdateAlertCondition(alertConditionID uint, args *UpdateAlertConditionArgs) (*AlertCondition, error) {
+	requestArgs := map[string]interface{}{
+		"synthetics_condition": args,
+	}
+	requestBuf := &bytes.Buffer{}
+	if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
+
+	}
+
+	request, err := c.getRequest(
+		"PUT",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
+		requestBuf,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create UpdateAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform UpdateAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, errors.Errorf(
+			"error: invalid response from UpdateAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var ac map[string]*AlertCondition
+	if err := json.NewDecoder(response.Body).Decode(&ac); err != nil {
+		return nil, errors.Wrap(err, "error: could not JSON decode alert condition")
+	}
+	if condition, ok := ac["synthetics_condition"]; ok {
+		return condition, nil
+	}
+
+	return nil, errors.New("error: condition not returned")
+}
+
+// DeleteAlertCondition deletes a Synthetics alert condition.
+func (c *Client) DeleteAlertCondition(alertConditionID uint) error {
+	request, err := c.getRequest(
+		"DELETE",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
+		nil,
+	)
+	if err != nil {
+		return errors.Wrap(err, "error: could not create DeleteAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return errors.Wrap(err, "error: could not perform DeleteAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(response.Body)
+		return errors.Errorf(
+			"error: invalid response from DeleteAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	return nil
+}
+
+// GetAlertCondition finds a Synthetics alert condition.
+func (c *Client) GetAlertCondition(policyID, alertConditionID uint) (*AlertCondition, error) {
+	request, err := c.getRequest(
+		"GET",
+		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions.json?policy_id=%d", policyID),
+		nil,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not create GetAlertCondition request")
+	}
+
+	response, err := c.HTTPClient.Do(request)
+	if err != nil {
+		return nil, errors.Wrap(err, "error: could not perform GetAlertCondition request")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusNotFound {
+			return nil, ErrAlertConditionNotFound
+		}
+
+		body, _ := ioutil.ReadAll(response.Body)
+		return nil, errors.Errorf(
+			"error: invalid response from GetAlertCondition with code %d. Message: %s",
+			response.StatusCode,
+			body,
+		)
+	}
+
+	var acs map[string][]*AlertCondition
+	if err := json.NewDecoder(response.Body).Decode(&acs); err != nil {
+		return nil, errors.Wrap(err, "error: could not JSON decode alert condition")
+	}
+	if conditions, ok := acs["synthetics_conditions"]; ok {
+		for _, ac := range conditions {
+			if ac.ID == alertConditionID {
+				return ac, nil
+			}
+		}
+	}
+
+	return nil, ErrAlertConditionNotFound
 }

@@ -3,6 +3,7 @@ package synthetics_test
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"testing"
 
 	httpmock "gopkg.in/jarcoal/httpmock.v1"
@@ -12,7 +13,11 @@ import (
 
 func client() *synthetics.Client {
 	conf := func(s *synthetics.Client) {
-		s.APIKey = "NEW_RELIC_API_KEY"
+		if apiKey := os.Getenv("NEW_RELIC_API_KEY"); apiKey != "" {
+			s.APIKey = apiKey
+		} else {
+			s.APIKey = "NEW_RELIC_API_KEY"
+		}
 	}
 	client, err := synthetics.NewClient(conf)
 	if err != nil {
@@ -81,7 +86,7 @@ func TestGetAllMonitors(t *testing.T) {
 }
 
 func TestIntegration(t *testing.T) {
-	t.Skip()
+	// t.Skip()
 
 	args := &synthetics.CreateMonitorArgs{
 		Name:         "david-test-1",
