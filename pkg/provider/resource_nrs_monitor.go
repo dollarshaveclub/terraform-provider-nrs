@@ -35,7 +35,7 @@ func NRSMonitorResource() *schema.Resource {
 				Description: "The URL to monitor",
 			},
 			"locations": &schema.Schema{
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Required:    true,
 				Description: "The locations to check from",
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -131,11 +131,14 @@ func NRSMonitorCreate(resourceData *schema.ResourceData, meta interface{}) error
 		Type:         resourceData.Get("type").(string),
 		Frequency:    uint(resourceData.Get("frequency").(int)),
 		URI:          resourceData.Get("uri").(string),
-		Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
 		Status:       resourceData.Get("status").(string),
 		SLAThreshold: resourceData.Get("sla_threshold").(float64),
 	}
 
+	if data, ok := resourceData.GetOk("locations"); ok {
+		locations := data.(*schema.Set)
+		args.Locations = util.StrSlice(locations.List())
+	}
 	if data, ok := resourceData.GetOk("validation_string"); ok {
 		args.ValidationString = util.StrPtr(data.(string))
 	}
@@ -194,11 +197,14 @@ func NRSMonitorUpdate(resourceData *schema.ResourceData, meta interface{}) error
 		Name:         resourceData.Get("name").(string),
 		Frequency:    uint(resourceData.Get("frequency").(int)),
 		URI:          resourceData.Get("uri").(string),
-		Locations:    util.StrSlice(resourceData.Get("locations").([]interface{})),
 		Status:       resourceData.Get("status").(string),
 		SLAThreshold: resourceData.Get("sla_threshold").(float64),
 	}
 
+	if resourceData.HasChange("locations") {
+		locations := resourceData.Get("locations").(*schema.Set)
+		args.Locations = util.StrSlice(locations.List())
+	}
 	if resourceData.HasChange("validation_string") {
 		validationString := resourceData.Get("validation_string").(string)
 		if validationString != "" {
