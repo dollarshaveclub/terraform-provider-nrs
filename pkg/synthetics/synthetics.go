@@ -45,12 +45,6 @@ var (
 	ErrAlertConditionNotFound = errors.New("error: alert condition not found")
 )
 
-// HTTPClient is the interface to the HTTP clients that a Client can
-// use.
-type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
 // Client is a client to New Relic Synthetics.
 type Client struct {
 	APIKey     string
@@ -72,6 +66,9 @@ func NewClient(configs ...func(*Client)) (*Client, error) {
 	if client.HTTPClient == nil {
 		client.HTTPClient = http.DefaultClient
 	}
+
+	// Make a HTTP client that can handle retries.
+	client.HTTPClient = newHTTPClientWithRetries(client.HTTPClient, 5)
 
 	return client, nil
 }
