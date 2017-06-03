@@ -28,6 +28,7 @@ func NRSAlertConditionResource() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "The ID of the monitor",
+				ForceNew:    true,
 			},
 			"runbook_url": &schema.Schema{
 				Type:        schema.TypeString,
@@ -84,6 +85,9 @@ func NRSAlertConditionExists(resourceData *schema.ResourceData, meta interface{}
 	client := meta.(*synthetics.Client)
 
 	_, err := client.GetAlertCondition(uint(resourceData.Get("policy_id").(int)), uint(resourceData.Get("id").(int)))
+	if err == synthetics.ErrAlertConditionNotFound {
+		return false, nil
+	}
 	if err != nil {
 		return false, errors.Wrapf(err, "error: could not find alert condition")
 	}
