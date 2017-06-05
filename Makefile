@@ -21,4 +21,4 @@ create-release:
 		github.com/dollarshaveclub/terraform-provider-nrs/cmd/terraform-provider-nrs
 
 	mkdir releases
-	tar -c build/terraform-provider-nrs -C build | gzip -c > releases/terraform-provider-nrs-${VERSION}.tar.gz
+	tar -C build -c terraform-provider-nrs | gzip -c > releases/terraform-provider-nrs-${VERSION}.tar.gz
