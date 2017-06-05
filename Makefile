@@ -10,8 +10,6 @@ test:
 		github.com/dollarshaveclub/terraform-provider-nrs/cmd/...
 
 create-release:
-	git diff-index --quiet HEAD -- || echo "All changes must be commited first." && exit 1
-
 	rm -rf build releases
 	mkdir -p build/terraform-provider-nrs/linux-amd64
 	mkdir -p build/terraform-provider-nrs/darwin-amd64
