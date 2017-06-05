@@ -13,10 +13,10 @@ import (
 
 func client() *synthetics.Client {
 	conf := func(s *synthetics.Client) {
-		if apiKey := os.Getenv("NEW_RELIC_API_KEY"); apiKey != "" {
+		if apiKey := os.Getenv("NEWRELIC_API_KEY"); apiKey != "" {
 			s.APIKey = apiKey
 		} else {
-			s.APIKey = "NEW_RELIC_API_KEY"
+			s.APIKey = "NEWRELIC_API_KEY"
 		}
 	}
 	client, err := synthetics.NewClient(conf)

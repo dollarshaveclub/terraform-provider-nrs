@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 )
@@ -45,6 +46,7 @@ func (h *httpClientWithRetries) Do(req *http.Request) (*http.Response, error) {
 
 		if response.StatusCode == http.StatusTooManyRequests {
 			if i != h.retries-1 {
+				log.Printf("rate limited by synthetics, sleeping then retrying")
 				time.Sleep((1 << i) * time.Second)
 			}
 			continue
