@@ -3,7 +3,7 @@ package provider
 import (
 	"fmt"
 
-	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/synthetics"
+	synthetics "github.com/dollarshaveclub/new-relic-synthetics-go"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/pkg/errors"
 )

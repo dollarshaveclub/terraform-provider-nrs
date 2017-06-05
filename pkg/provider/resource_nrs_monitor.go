@@ -3,8 +3,8 @@ package provider
 import (
 	"crypto/sha256"
 
-	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/synthetics"
-	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/util"
+	synthetics "github.com/dollarshaveclub/new-relic-synthetics-go"
+	"github.com/dollarshaveclub/new-relic-synthetics-go/util"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/helper/validation"
 	"github.com/pkg/errors"

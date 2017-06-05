@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"github.com/dollarshaveclub/terraform-provider-nrs/pkg/synthetics"
+	synthetics "github.com/dollarshaveclub/new-relic-synthetics-go"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/pkg/errors"
