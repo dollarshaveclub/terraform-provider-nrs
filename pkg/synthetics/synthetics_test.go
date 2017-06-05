@@ -73,7 +73,7 @@ func TestGetMonitor(t *testing.T) {
 func TestGetAllMonitors(t *testing.T) {
 	t.Skip()
 
-	response, err := client().GetAllMonitors()
+	response, err := client().GetAllMonitors(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

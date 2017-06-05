@@ -127,12 +127,6 @@ func (e *ExtendedMonitor) parse() error {
 
 }
 
-// GetAllMonitorsArgs are the arguments to GetAllMonitors.
-type GetAllMonitorsArgs struct {
-	Offset uint
-	Limit  uint
-}
-
 // GetAllMonitorsResponse is the response by GetAllMonitors.
 type GetAllMonitorsResponse struct {
 	Monitors []*ExtendedMonitor `json:"monitors"`
@@ -141,12 +135,7 @@ type GetAllMonitorsResponse struct {
 
 // GetAllMonitors returns all monitors within a New Relic Synthetics
 // account.
-func (c *Client) GetAllMonitors(configs ...func(*GetAllMonitorsArgs)) (*GetAllMonitorsResponse, error) {
-	requestArgs := &GetAllMonitorsArgs{}
-	for _, config := range configs {
-		config(requestArgs)
-	}
-
+func (c *Client) GetAllMonitors(offset, limit uint) (*GetAllMonitorsResponse, error) {
 	requestFunc := func() (*http.Request, error) {
 		request, err := c.getRequest(
 			"GET",
@@ -156,11 +145,11 @@ func (c *Client) GetAllMonitors(configs ...func(*GetAllMonitorsArgs)) (*GetAllMo
 		if err != nil {
 			return nil, errors.Wrap(err, "error: could not create GetAllMonitors request")
 		}
-		if requestArgs.Offset > 0 {
-			request.Form.Add("offset", strconv.FormatUint(uint64(requestArgs.Offset), 10))
+		if offset > 0 {
+			request.Form.Add("offset", strconv.FormatUint(uint64(offset), 10))
 		}
-		if requestArgs.Limit > 0 {
-			request.Form.Add("limit", strconv.FormatUint(uint64(requestArgs.Limit), 10))
+		if limit > 0 {
+			request.Form.Add("limit", strconv.FormatUint(uint64(limit), 10))
 		}
 		return request, nil
 	}
