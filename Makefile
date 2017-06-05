@@ -22,5 +22,3 @@ create-release:
 
 	mkdir releases
 	tar -c build/terraform-provider-nrs -C build | gzip -c > releases/terraform-provider-nrs-${VERSION}.tar.gz
-
-	git tag ${VERSION} HEAD
