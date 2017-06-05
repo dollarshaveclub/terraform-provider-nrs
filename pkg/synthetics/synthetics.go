@@ -49,6 +49,9 @@ var (
 type Client struct {
 	APIKey     string
 	HTTPClient HTTPClient
+
+	// The HTTP client that's actually used.
+	httpClient RetryableHTTPClient
 }
 
 // NewClient instantiates a new Client.
@@ -68,7 +71,7 @@ func NewClient(configs ...func(*Client)) (*Client, error) {
 	}
 
 	// Make a HTTP client that can handle retries.
-	client.HTTPClient = newHTTPClientWithRetries(client.HTTPClient, 5)
+	client.httpClient = newHTTPClientWithRetries(client.HTTPClient, 5)
 
 	return client, nil
 }
@@ -144,23 +147,25 @@ func (c *Client) GetAllMonitors(configs ...func(*GetAllMonitorsArgs)) (*GetAllMo
 		config(requestArgs)
 	}
 
-	request, err := c.getRequest(
-		"GET",
-		"https://synthetics.newrelic.com/synthetics/api/v3/monitors",
-		nil,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "error: could not create GetAllMonitors request")
+	requestFunc := func() (*http.Request, error) {
+		request, err := c.getRequest(
+			"GET",
+			"https://synthetics.newrelic.com/synthetics/api/v3/monitors",
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create GetAllMonitors request")
+		}
+		if requestArgs.Offset > 0 {
+			request.Form.Add("offset", strconv.FormatUint(uint64(requestArgs.Offset), 10))
+		}
+		if requestArgs.Limit > 0 {
+			request.Form.Add("limit", strconv.FormatUint(uint64(requestArgs.Limit), 10))
+		}
+		return request, nil
 	}
 
-	if requestArgs.Offset > 0 {
-		request.Form.Add("offset", strconv.FormatUint(uint64(requestArgs.Offset), 10))
-	}
-	if requestArgs.Limit > 0 {
-		request.Form.Add("limit", strconv.FormatUint(uint64(requestArgs.Limit), 10))
-	}
-
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not perform GetAllMonitors request")
 	}
@@ -214,16 +219,19 @@ func (c *Client) GetMonitor(id string) (*Monitor, error) {
 		return nil, errors.Errorf("error: invalid id provided: %s", id)
 	}
 
-	request, err := c.getRequest(
-		"GET",
-		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
-		nil,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "error: could not create GetMonitor request")
+	requestFunc := func() (*http.Request, error) {
+		request, err := c.getRequest(
+			"GET",
+			fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create GetMonitor request")
+		}
+		return request, nil
 	}
 
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not perform GetMonitor request")
 	}
@@ -312,21 +320,24 @@ func (c *Client) CreateMonitor(m *CreateMonitorArgs) (*Monitor, error) {
 		reqArgs.Options = options
 	}
 
-	reqBody := &bytes.Buffer{}
-	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
-		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", m.Name)
+	requestFunc := func() (*http.Request, error) {
+		reqBody := &bytes.Buffer{}
+		if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
+			return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", m.Name)
+		}
+
+		request, err := c.getRequest(
+			"POST",
+			"https://synthetics.newrelic.com/synthetics/api/v3/monitors",
+			reqBody,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create CreateMonitor request")
+		}
+		return request, nil
 	}
 
-	request, err := c.getRequest(
-		"POST",
-		"https://synthetics.newrelic.com/synthetics/api/v3/monitors",
-		reqBody,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "error: could not create CreateMonitor request")
-	}
-
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not perform CreateMonitor request")
 	}
@@ -400,21 +411,23 @@ func (c *Client) UpdateMonitor(id string, args *UpdateMonitorArgs) (*Monitor, er
 		reqArgs.Options = options
 	}
 
-	reqBody := &bytes.Buffer{}
-	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
-		return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", args.Name)
+	requestFunc := func() (*http.Request, error) {
+		reqBody := &bytes.Buffer{}
+		if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
+			return nil, errors.Wrapf(err, "error: could not JSON encode monitor: %s", args.Name)
+		}
+		request, err := c.getRequest(
+			"PATCH",
+			fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
+			reqBody,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create UpdateMonitor request")
+		}
+		return request, nil
 	}
 
-	request, err := c.getRequest(
-		"PATCH",
-		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
-		reqBody,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "error: could not create UpdateMonitor request")
-	}
-
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not perform UpdateMonitor request")
 	}
@@ -440,16 +453,19 @@ func (c *Client) UpdateMonitor(id string, args *UpdateMonitorArgs) (*Monitor, er
 
 // DeleteMonitor deletes a Monitor.
 func (c *Client) DeleteMonitor(id string) error {
-	request, err := c.getRequest(
-		"DELETE",
-		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
-		nil,
-	)
-	if err != nil {
-		return errors.Wrap(err, "error: could not create DeleteMonitor request")
+	requestFunc := func() (*http.Request, error) {
+		request, err := c.getRequest(
+			"DELETE",
+			fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s", id),
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create DeleteMonitor request")
+		}
+		return request, nil
 	}
 
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return errors.Wrap(err, "error: could not perform DeleteMonitor request")
 	}
@@ -492,21 +508,23 @@ func (c *Client) UpdateMonitorScript(id string, args *UpdateMonitorScriptArgs) e
 		"scriptLocations": args.ScriptLocations,
 	}
 
-	reqBody := &bytes.Buffer{}
-	if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
-		return errors.Wrapf(err, "error: could not JSON encode script args for monitor: %s", id)
+	requestFunc := func() (*http.Request, error) {
+		reqBody := &bytes.Buffer{}
+		if err := json.NewEncoder(reqBody).Encode(reqArgs); err != nil {
+			return nil, errors.Wrapf(err, "error: could not JSON encode script args for monitor: %s", id)
+		}
+		request, err := c.getRequest(
+			"PUT",
+			fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s/script", id),
+			reqBody,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create UpdateMonitorScript request")
+		}
+		return request, nil
 	}
 
-	request, err := c.getRequest(
-		"PUT",
-		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s/script", id),
-		reqBody,
-	)
-	if err != nil {
-		return errors.Wrap(err, "error: could not create UpdateMonitorScript request")
-	}
-
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return errors.Wrap(err, "error: could not perform UpdateMonitorScript request")
 	}
@@ -527,16 +545,19 @@ func (c *Client) UpdateMonitorScript(id string, args *UpdateMonitorScriptArgs) e
 
 // GetMonitorScript returns the script that backs a monitor.
 func (c *Client) GetMonitorScript(id string) (string, error) {
-	request, err := c.getRequest(
-		"GET",
-		fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s/script", id),
-		nil,
-	)
-	if err != nil {
-		return "", errors.Wrap(err, "error: could not create GetMonitorScript request")
+	requestFunc := func() (*http.Request, error) {
+		request, err := c.getRequest(
+			"GET",
+			fmt.Sprintf("https://synthetics.newrelic.com/synthetics/api/v3/monitors/%s/script", id),
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create GetMonitorScript request")
+		}
+		return request, nil
 	}
 
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return "", errors.Wrap(err, "error: could not perform GetMonitorScript request")
 	}
@@ -593,21 +614,24 @@ func (c *Client) CreateAlertCondition(policyID uint, args *CreateAlertConditionA
 	requestArgs := map[string]interface{}{
 		"synthetics_condition": args,
 	}
-	requestBuf := &bytes.Buffer{}
-	if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
 
+	requestFunc := func() (*http.Request, error) {
+		requestBuf := &bytes.Buffer{}
+		if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
+
+		}
+		request, err := c.getRequest(
+			"POST",
+			fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/policies/%d.json", policyID),
+			requestBuf,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create CreateAlertCondition request")
+		}
+		return request, nil
 	}
 
-	request, err := c.getRequest(
-		"POST",
-		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/policies/%d.json", policyID),
-		requestBuf,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "error: could not create CreateAlertCondition request")
-	}
-
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not perform CreateAlertCondition request")
 	}
@@ -647,21 +671,24 @@ func (c *Client) UpdateAlertCondition(alertConditionID uint, args *UpdateAlertCo
 	requestArgs := map[string]interface{}{
 		"synthetics_condition": args,
 	}
-	requestBuf := &bytes.Buffer{}
-	if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
 
+	requestFunc := func() (*http.Request, error) {
+		requestBuf := &bytes.Buffer{}
+		if err := json.NewEncoder(requestBuf).Encode(requestArgs); err != nil {
+
+		}
+		request, err := c.getRequest(
+			"PUT",
+			fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
+			requestBuf,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create UpdateAlertCondition request")
+		}
+		return request, nil
 	}
 
-	request, err := c.getRequest(
-		"PUT",
-		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
-		requestBuf,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "error: could not create UpdateAlertCondition request")
-	}
-
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not perform UpdateAlertCondition request")
 	}
@@ -689,16 +716,19 @@ func (c *Client) UpdateAlertCondition(alertConditionID uint, args *UpdateAlertCo
 
 // DeleteAlertCondition deletes a Synthetics alert condition.
 func (c *Client) DeleteAlertCondition(alertConditionID uint) error {
-	request, err := c.getRequest(
-		"DELETE",
-		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
-		nil,
-	)
-	if err != nil {
-		return errors.Wrap(err, "error: could not create DeleteAlertCondition request")
+	requestFunc := func() (*http.Request, error) {
+		request, err := c.getRequest(
+			"DELETE",
+			fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions/%d.json", alertConditionID),
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create DeleteAlertCondition request")
+		}
+		return request, nil
 	}
 
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return errors.Wrap(err, "error: could not perform DeleteAlertCondition request")
 	}
@@ -718,16 +748,19 @@ func (c *Client) DeleteAlertCondition(alertConditionID uint) error {
 
 // GetAlertCondition finds a Synthetics alert condition.
 func (c *Client) GetAlertCondition(policyID, alertConditionID uint) (*AlertCondition, error) {
-	request, err := c.getRequest(
-		"GET",
-		fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions.json?policy_id=%d", policyID),
-		nil,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "error: could not create GetAlertCondition request")
+	requestFunc := func() (*http.Request, error) {
+		request, err := c.getRequest(
+			"GET",
+			fmt.Sprintf("https://api.newrelic.com/v2/alerts_synthetics_conditions.json?policy_id=%d", policyID),
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "error: could not create GetAlertCondition request")
+		}
+		return request, nil
 	}
 
-	response, err := c.HTTPClient.Do(request)
+	response, err := c.httpClient.Do(requestFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "error: could not perform GetAlertCondition request")
 	}

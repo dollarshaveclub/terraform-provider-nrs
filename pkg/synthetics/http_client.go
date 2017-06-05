@@ -1,18 +1,20 @@
 package synthetics
 
 import (
-	"bytes"
-	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
 )
 
-// HTTPClient is the interface to the HTTP clients that a Client can
-// use.
+// RetryableHTTPClient is the interface to an HTTP client that
+// supports retries.
+type RetryableHTTPClient interface {
+	Do(func() (*http.Request, error)) (*http.Response, error)
+}
+
+// HTTPClient is the interface to an HTTP client.
 type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
+	Do(*http.Request) (*http.Response, error)
 }
 
 type httpClientWithRetries struct {
@@ -24,22 +26,16 @@ func newHTTPClientWithRetries(client HTTPClient, retries uint) *httpClientWithRe
 	return &httpClientWithRetries{client: client, retries: retries}
 }
 
-func (h *httpClientWithRetries) Do(req *http.Request) (*http.Response, error) {
-	var bodyBytes []byte
-	if req.Body != nil {
-		body := &bytes.Buffer{}
-		if _, err := io.Copy(body, req.Body); err != nil {
-			return nil, err
-		}
-		bodyBytes = body.Bytes()
-	}
-
+// Do performs a request with retries.
+func (h *httpClientWithRetries) Do(reqFunc func() (*http.Request, error)) (*http.Response, error) {
 	var response *http.Response
 	for i := uint(0); i < h.retries; i++ {
-		req.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+		req, err := reqFunc()
+		if err != nil {
+			return nil, err
+		}
 
-		var err error
-		response, err = h.client.Do(req)
+		response, err := h.client.Do(req)
 		if err != nil {
 			return nil, err
 		}
