@@ -41,7 +41,7 @@ The provider should now be useable from within Terraform!
 
 ```
 provider "nrs" {
-  new_relic_api_key = "REDACTED"
+  newrelic_api_key = "REDACTED"
 }
 
 resource "nrs_monitor" "new_monitor" {
