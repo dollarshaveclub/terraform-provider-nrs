@@ -111,6 +111,9 @@ func NRSMonitorResource() *schema.Resource {
 		Delete: NRSMonitorDelete,
 		Read:   NRSMonitorRead,
 		Update: NRSMonitorUpdate,
+                Importer: &schema.ResourceImporter{
+                    State: NRSMonitorImport,
+                },
 	}
 }
 
@@ -186,6 +189,12 @@ func NRSMonitorCreate(resourceData *schema.ResourceData, meta interface{}) error
 	}
 
 	return nil
+}
+
+func NRSMonitorImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+    d.SetId(d.Id())
+
+    return []*schema.ResourceData{d}, nil
 }
 
 // NRSMonitorUpdate updates a Synthetics monitor using Terraform
