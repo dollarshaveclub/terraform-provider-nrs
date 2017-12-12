@@ -2,6 +2,8 @@ package provider
 
 import (
 	"fmt"
+        "strings"
+        "strconv"
 
 	synthetics "github.com/dollarshaveclub/new-relic-synthetics-go"
 	"github.com/hashicorp/terraform/helper/schema"
@@ -52,6 +54,9 @@ func NRSAlertConditionResource() *schema.Resource {
 		Delete: NRSAlertConditionDelete,
 		Read:   NRSAlertConditionRead,
 		Update: NRSAlertConditionUpdate,
+                Importer: &schema.ResourceImporter{
+                    State: NRSAlertConditionImportState,
+                },
 	}
 }
 
@@ -77,6 +82,23 @@ func NRSAlertConditionCreate(resourceData *schema.ResourceData, meta interface{}
 	resourceData.SetId(fmt.Sprintf("%d", alertCondition.ID))
 
 	return nil
+}
+
+
+func NRSAlertConditionImportState(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+    s := strings.Split(d.Id(), ":")
+    if len(s) != 2 {
+        /*
+            In New Relic alert condition , we need both policy_id  and condition_id to get given user data.
+        */
+        return nil, fmt.Errorf("Import resource ID should consist of policy_id:condition_id")
+    }
+
+    val,_ := strconv.Atoi(s[0])
+    d.SetId(s[1])
+    d.Set("policy_id", val)
+
+    return []*schema.ResourceData{d}, nil
 }
 
 // NRSAlertConditionExists checks whether an alert condition exists
