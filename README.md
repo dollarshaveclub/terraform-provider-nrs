@@ -80,3 +80,18 @@ resource "nrs_alert_condition" "new_condition" {
   policy_id = "${newrelic_alert_policy.new_policy.id}"
 }
 ```
+
+# Import
+
+In case of using import for alerts condition be aware that provider needs two value to do correct import.
+
+```
+terraform import name_of_resource policy_id:condition_id
+terraform import nrs_alert_condition.alert1 123456:567890
+```
+
+For importing monitors only id of monitor is needed:
+```
+terraform import name_of_resource monitor_id
+terraform import nrs_monitor.monitor1 d02c69d5-bac8-4243-91f4-4f9c62a7c71c
+```

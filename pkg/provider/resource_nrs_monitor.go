@@ -111,9 +111,9 @@ func NRSMonitorResource() *schema.Resource {
 		Delete: NRSMonitorDelete,
 		Read:   NRSMonitorRead,
 		Update: NRSMonitorUpdate,
-                Importer: &schema.ResourceImporter{
-                    State: schema.ImportStatePassthrough,
-                },
+		Importer: &schema.ResourceImporter{
+			State: schema.ImportStatePassthrough,
+		},
 	}
 }
 
