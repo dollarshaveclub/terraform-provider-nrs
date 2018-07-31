@@ -52,7 +52,7 @@ resource "nrs_monitor" "new_monitor" {
   frequency = 60
 
   // The monitoring locations. A list can be found at the endpoint:
-  // https://synthetics.newrelic.com/synthetics/api/v1/locations
+  // https://docs.newrelic.com/docs/synthetics/new-relic-synthetics/administration/synthetics-public-minion-ips 
   locations = ["AWS_US_WEST_1"]
 
   status = "ENABLED"
