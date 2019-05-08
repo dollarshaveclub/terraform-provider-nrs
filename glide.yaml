@@ -4,7 +4,7 @@ import:
   subpackages:
   - util
 - package: github.com/hashicorp/terraform
-  version: ~0.9.6
+  version: v0.12.0-beta2
   subpackages:
   - helper/schema
   - helper/validation
