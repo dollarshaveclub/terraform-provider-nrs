@@ -15,11 +15,6 @@ import (
 func NRSMonitorResource() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
-			"id": &schema.Schema{
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The monitor's ID with New Relic",
-			},
 			"name": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
