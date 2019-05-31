@@ -59,7 +59,7 @@ func schemaId(resourceData *schema.ResourceData) (int, error) {
 
 	iresid, err := strconv.Atoi(sresid)
 	if (err != nil) {
-		return -1, fmt.Errorf("error: could not determine/convert id from resourceData.Id()=\"%s\" to int.", sresid)
+		return -1, errors.Wrapf(err, "error: could not determine/convert id from resourceData.Id()=\"%s\" to int.", sresid)
 	}
 
 	return iresid, nil
